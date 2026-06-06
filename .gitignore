@@ -1,0 +1,77 @@
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== C++ / Qt（开发期生效）=====
+build*/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*.pro.user
+*.autosave
+
+# ===== CMake =====
+compile_commands.json
+Testing/
+
+# ===== Go（开发期生效）=====
+server/bin/
+server/vendor/
+*.test
+*.out
+
+# ===== 运行时数据 =====
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+*.dmp
+
+# ===== 配置 / 密钥 =====
+.env
+.env.*
+*.local.yaml
+*.local.json
+
+# ===== 覆盖率 =====
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+coverage/
+
+# ===== Core dump =====
+core
+core.*
+
+# ===== 临时 / 备份 =====
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ===== 打包产物 =====
+dist/
+packages/
+*.AppImage
+*.deb
+*.rpm
+*.dmg

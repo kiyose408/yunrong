@@ -24,6 +24,7 @@ moc_*.cpp
 ui_*.h
 qrc_*.cpp
 *.pro.user
+*.user
 *.autosave
 
 # ===== CMake =====

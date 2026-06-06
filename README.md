@@ -2,7 +2,7 @@
 
 跨平台企业办公协作桌面客户端，以即时通讯为核心，融合任务通知与文件传输。
 
-> **当前阶段**：设计文档撰写中（Phase 0）。详见 [ENGINEERING.md](ENGINEERING.md)。
+> **当前阶段**：设计文档撰写中（Phase 0）。详见 [ENGINEERING.md](docs/项目追踪/ENGINEERING.md)。
 
 ## 技术栈（设计）
 
@@ -20,8 +20,8 @@
 ```
 yunrong/
 ├── docs/
-│   └── 设计文档/          # 全部设计文档（00–09）
-├── ENGINEERING.md         # 工程规范
+│   ├── 设计文档/          # 全部设计文档（00–09）
+│   └── 项目追踪/          # 进度规划、任务划分、开发日志、工程规范
 ├── .gitignore
 └── README.md
 ```
@@ -57,4 +57,4 @@ yunrong/
 
 ## 工程规范
 
-分支策略、commit 格式、合并自查清单见 [ENGINEERING.md](ENGINEERING.md)。
+分支策略、commit 格式、合并自查清单见 [ENGINEERING.md](docs/项目追踪/ENGINEERING.md)。

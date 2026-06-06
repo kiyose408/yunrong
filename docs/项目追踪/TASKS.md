@@ -1,1396 +1,1331 @@
-# 任务划分文档（T001–TXXX）
+# 任务划分文档
 
-> 单人开发，每任务 1–4 小时，完成后可独立验收。依赖关系明确，禁止大规模变动。
-
----
-
-## 任务总览
-
-```
-Phase 1 (T001–T020)  工程骨架 + Mock Server        [2 周]
-Phase 2 (T021–T055)  客户端核心层                   [6 周]
-Phase 3 (T056–T078)  Go 后端骨架                   [4 周]
-Phase 4 (T079–T098)  业务逻辑层                     [4 周]
-Phase 5 (T099–T130)  GUI                           [7 周]
-Phase 6 (T131–T145)  集成联调 + 跨平台打包          [2 周]
-```
+> 增量验证驱动。每项任务从上一项任务的**已验证状态**出发，产出可运行、可观察的增量。
+> **禁止**：提前创建后续任务才需要的文件或抽象。**允许**：任务中发现设计问题时回过来修正设计文档。
 
 ---
 
-## 任务通用格式
+## Phase 1：工程骨架（T001–T012）
 
-```
-TXXX ─ 标题（预估工时）
-
-依赖：TXXX, TXXX
-产出：path/to/file.cpp, path/to/file.h
-验收：
-  □ 条件 1
-  □ 条件 2
-说明：补充信息（可选）
-```
+> 出口：`yunrong_client` 空白窗口可启动并输出日志；Mock Server 响应 `/health` 并转发单聊消息。
 
 ---
 
-## Phase 1：工程骨架 + Mock Server（T001–T020）
-
-> 出口标准：`yunrong_client` 可编译启动空白窗口；Mock Server 可启动并响应 HTTP/WS。
-
-### 第 1 周：C++ 客户端骨架
-
----
-
-**T001 — 项目目录与 CMake 顶层结构（1h）**
+**T001 — CMake 项目可 configure（1h）** ✅ 已完成
 
 ```
 依赖：无
-产出：client/CMakeLists.txt, client/CMakePresets.json, client/cmake/Platform.cmake
+产出：client/CMakeLists.txt  client/CMakePresets.json  client/cmake/Platform.cmake
 验收：
-  □ cmake --preset debug -S client -B client/build/debug 配置通过（允许 Qt 未安装时失败）
-  □ CMakePresets.json 包含 debug / release / ci-debug 三个 preset
-  □ Platform.cmake 区分 WIN32 / UNIX 平台宏
-说明：仅 CMake 配置文件，不含任何 .cpp。FetchContent 声明 nlohmann_json、spdlog。
+  □ Qt Creator 中打开 client/CMakeLists.txt，configure 通过
+  □ FetchContent 成功下载 nlohmann_json 和 spdlog
+  □ 不含任何 .cpp 或 .h 文件
 ```
 
 ---
 
-**T002 — 核心库 CMake 骨架（0.5h）**
+**T002 — 空白窗口可启动（1h）**
 
 ```
 依赖：T001
-产出：client/src/core/CMakeLists.txt
+起点：CMake configure 通过，spdlog 和 nlohmann_json 可链接
+产出：client/src/app/main.cpp  client/src/app/CMakeLists.txt  client/src/gui/CMakeLists.txt
+      修改 client/CMakeLists.txt（增加 add_subdirectory）
 验收：
-  □ add_library(yunrong_core STATIC) 声明存在
-  □ target_link_libraries 包含 Qt6::Core Qt6::Network Qt6::WebSockets Qt6::Sql nlohmann_json spdlog
-  □ target_sources 列出 net/data/service/infra 下所有 .cpp 占位路径（文件尚未存在）
-  □ include(../../cmake/Platform.cmake) 在末尾
+  □ cmake --build 成功，无编译错误
+  □ 启动后显示空白 Qt 窗口（标题 "YunRong"）
+  □ 关闭窗口正常退出，无崩溃
+说明：暂不创建 core 库。代码直接放在 app/ 中——先运行起来再考虑复用。
 ```
 
 ---
 
-**T003 — GUI + App CMake 骨架（0.5h）**
-
-```
-依赖：T002
-产出：client/src/gui/CMakeLists.txt, client/src/app/CMakeLists.txt
-验收：
-  □ gui/CMakeLists: add_library(yunrong_gui STATIC)，link yunrong_core + Qt6::Widgets
-  □ app/CMakeLists: add_executable(yunrong_client main.cpp)，link yunrong_gui
-```
-
----
-
-**T004 — infra/logger 实现（1.5h）**
+**T003 — 日志输出到文件和控制台（1h）**
 
 ```
 依赖：T002
-产出：client/src/core/infra/logger.h, client/src/core/infra/logger.cpp
+起点：空白窗口可启动
+产出：client/src/app/logger.h  client/src/app/logger.cpp
 验收：
-  □ initLogger() 创建 spdlog 的 console sink + file sink
-  □ LOG_INFO / LOG_WARN / LOG_ERROR 宏可用
-  □ setLogLevel() 可运行时切换级别
-  □ getLogger() 返回全局 logger 实例
-  □ 编译通过（单独编译此 .cpp + spdlog 头文件）
-说明：完整实现，不是 stub。这是 Phase 1 少数需要完整实现的基础模块。
+  □ 启动程序，控制台出现 [INFO] Logger initialized
+  □ 程序目录下生成 yunrong.log
+  □ yunrong.log 内容含启动时间戳
+  □ 关闭窗口时日志记录 "Application exiting"
 ```
 
 ---
 
-**T005 — infra/config_mgr 实现（1.5h）**
-
-```
-依赖：T002
-产出：client/src/core/infra/config_mgr.h, client/src/core/infra/config_mgr.cpp
-验收：
-  □ Meyer's Singleton（static local）
-  □ loadFromFile(path) 解析 JSON，文件不存在时返回 false + 日志警告
-  □ getString / getInt / getBool 含 fallback 默认值
-  □ serverHost() / serverPort() / useTls() 便捷方法
-  □ 编译通过
-```
-
----
-
-**T006 — model 数据模型头文件（1h）**
+**T004 — 配置从 JSON 文件加载（1.5h）**
 
 ```
 依赖：T002
-产出：
-  client/src/core/model/message.h
-  client/src/core/model/conversation.h
-  client/src/core/model/contact.h
-  client/src/core/model/task.h
-  client/src/core/model/file_transfer.h
+起点：空白窗口可启动
+产出：client/src/app/config_mgr.h  client/src/app/config_mgr.cpp
+      client/config/default.json
 验收：
-  □ 每个 .h 有 #pragma once + namespace core::model
-  □ Message 含 msgId/convId/senderId/contentType/contentBody/status/serverSeq/timestamp/edited/revoked
-  □ Conversation 含 id/type/title/lastMsgPreview/unreadCount/lastReadSeq/isPinned/isMuted
-  □ Contact 含 id/username/displayName/avatarUrl/departmentId/status
-  □ Task 含 notifyId/taskType/title/body/priority/status/fromUserId/toUserId/actionUrl
-  □ FileTransfer 含 filePath/fileHash/fileSize/chunkSize/totalChunks/receivedChunks/progress/bytesPerSec
-  □ 纯头文件，无 .cpp
-说明：数据结构与 04-数据库设计文档 对齐。
+  □ 启动时读取 config/default.json
+  □ 日志输出 server.host 和 server.port 的值
+  □ default.json 不存在时不崩溃，日志警告 + 使用默认值
 ```
 
 ---
 
-**T007 — infra/thread_pool stub（0.5h）**
+**T005 — WebSocket 可连接可断开（2h）**
 
 ```
-依赖：T002
-产出：client/src/core/infra/thread_pool.h, client/src/core/infra/thread_pool.cpp
+依赖：T003, T004
+起点：日志和配置可用
+产出：client/src/app/ws_client.h  client/src/app/ws_client.cpp
 验收：
-  □ ThreadPool 类声明（构造/析构/enqueue 模板/stop_）
-  □ .cpp 中构造和析构为空实现
-  □ 编译通过
-说明：Phase 2 第 7 周完整实现，当前仅占位编译。
+  □ 启动后自动连接 ws://{host}:{port}/ws
+  □ 连接成功时日志输出 "WebSocket connected"
+  □ 连接失败（目标不存在/端口错误）时日志输出错误原因，不崩溃
+  □ 关闭窗口时正常断开
+说明：在 Mock Server 就绪前，可用 T012 的 Mock Server 验证，或接受连接失败作为合法输出。
 ```
 
 ---
 
-**T008 — infra/msg_bus stub + infra/crypto stub（0.5h）**
-
-```
-依赖：T002
-产出：
-  client/src/core/infra/msg_bus.h, client/src/core/infra/msg_bus.cpp
-  client/src/core/infra/crypto.h, client/src/core/infra/crypto.cpp
-验收：
-  □ MsgBus<T> 模板类声明（push/tryPop/size）+ 空 .cpp
-  □ crypto.h 声明 sha256Hex / sha256File + 空 .cpp
-  □ 编译通过
-```
-
----
-
-**T009 — net 模块全部 stub（1h）**
-
-```
-依赖：T002, T006
-产出：
-  client/src/core/net/protocol.h, client/src/core/net/protocol.cpp
-  client/src/core/net/ws_client.h, client/src/core/net/ws_client.cpp
-  client/src/core/net/http_client.h, client/src/core/net/http_client.cpp
-  client/src/core/net/connection_mgr.h, client/src/core/net/connection_mgr.cpp
-  client/src/core/net/heartbeat.h, client/src/core/net/heartbeat.cpp
-  client/src/core/net/reconnect_strategy.h, client/src/core/net/reconnect_strategy.cpp
-  client/src/core/net/rate_limiter.h, client/src/core/net/rate_limiter.cpp
-验收：
-  □ 每个 .h 有 #pragma once + namespace core::net
-  □ Protocol 类声明：encodeAuth / encodeMessage / decode / sendAck 方法签名
-  □ WsClient 类声明：connect / disconnect / send / 信号 onMessageReceived
-  □ HttpClient 类声明：get / post / upload / 信号 onResponse
-  □ ConnectionMgr 类声明：sendMessage / uploadFile / 连接状态枚举
-  □ Heartbeat 类声明：start / stop / 信号 timeout
-  □ ReconnectStrategy 类声明：nextDelay / reset
-  □ RateLimiter 类声明：tryConsume
-  □ 每个 .cpp 只有 #include + 空实现或 return {};
-  □ 编译通过
-```
-
----
-
-**T010 — data 模块全部 stub（0.5h）**
-
-```
-依赖：T002, T006
-产出：
-  client/src/core/data/i_data_store.h
-  client/src/core/data/sqlite_store.h, client/src/core/data/sqlite_store.cpp
-  client/src/core/data/sync_mgr.h, client/src/core/data/sync_mgr.cpp
-  client/src/core/data/cache_mgr.h, client/src/core/data/cache_mgr.cpp
-验收：
-  □ IDataStore 纯虚接口（getMessages / saveMessage / getConversations 等）
-  □ SqliteStore : IDataStore，.cpp 空实现
-  □ SyncMgr 类声明（requestSync / applySyncData）
-  □ CacheMgr 类声明（get / put / evict）
-  □ 编译通过
-```
-
----
-
-**T011 — service 模块全部 stub（0.5h）**
-
-```
-依赖：T002, T006
-产出：
-  client/src/core/service/im_service.h, client/src/core/service/im_service.cpp
-  client/src/core/service/task_service.h, client/src/core/service/task_service.cpp
-  client/src/core/service/file_service.h, client/src/core/service/file_service.cpp
-  client/src/core/service/report_service.h, client/src/core/service/report_service.cpp
-验收：
-  □ IMService 类声明：sendTextMessage / onMessageReceived 信号
-  □ TaskService 类声明：getTasks / handleTask
-  □ FileService 类声明：uploadFile / downloadFile / 信号 transferProgress
-  □ ReportService 类声明：getMessageStats / getFileStats
-  □ 编译通过
-```
-
----
-
-**T012 — app/main.cpp 空白 QApplication 窗口（1h）**
-
-```
-依赖：T003, T004, T005
-产出：client/src/app/main.cpp
-验收：
-  □ QApplication 启动（appName="YunRong", appVersion 来自 APP_VERSION 宏）
-  □ 调用 initLogger()
-  □ 调用 ConfigManager::loadFromFile()
-  □ 创建 QMainWindow 空白窗口，标题 "云融 YunRong v0.1"
-  □ 窗口默认大小 1200×800
-  □ 编译通过 + 运行显示空白窗口
-说明：这是 Phase 1 第一个可运行的里程碑。
-```
-
----
-
-**T013 — tests 骨架（0.5h）**
-
-```
-依赖：T002
-产出：client/tests/CMakeLists.txt, client/tests/unit/test_protocol.cpp
-验收：
-  □ CMakeLists 引用 GTest::gtest GTest::gmock Qt6::Test
-  □ add_test 注册到 CTest
-  □ test_protocol.cpp 包含一个空 TEST 用例（EXPECT_TRUE(true)）
-  □ cmake --preset ci-debug 可配置，ctest 可运行通过
-```
-
----
-
-### 第 2 周：Go 后端 + Mock Server
-
----
-
-**T014 — Go 模块初始化（0.5h）**
-
-```
-依赖：无（server/ 独立项目）
-产出：server/go.mod, server/cmd/server/main.go
-验收：
-  □ go.mod module github.com/yunrong/server, go 1.22
-  □ main.go 内 func main() 打印 "yunrong server starting..."
-  □ go run ./cmd/server 可执行
-```
-
----
-
-**T015 — Gin 路由骨架（1h）**
-
-```
-依赖：T014
-产出：server/internal/handler/routes.go, server/cmd/server/main.go（更新）
-验收：
-  □ go get github.com/gin-gonic/gin 依赖就位
-  □ routes.go 注册 /api/v1/health → {"code":0, "message":"ok"}
-  □ main.go 启动 Gin 监听 :8080
-  □ curl localhost:8080/api/v1/health 返回 200
-```
-
----
-
-**T016 — PostgreSQL 连接池 + 自动迁移（2h）**
-
-```
-依赖：T015
-产出：server/internal/store/postgres.go, server/internal/store/migrations/001_initial_schema.sql
-验收：
-  □ go get github.com/jackc/pgx/v5 依赖就位
-  □ NewPostgresPool(dsn) 返回 *pgxpool.Pool，MaxConns=20
-  □ RunMigrations 读取 migrations/*.sql 文件，按文件名排序执行
-  □ main.go 启动时自动建表（users/departments/conversations/conversation_members/messages/files/tasks/sync_watermarks）
-  □ 重复启动不报错（IF NOT EXISTS）
-  □ 不依赖 embed（使用 os.ReadDir 读取 migrations/ 目录）
-说明：SQL 文件参考 04-数据库设计文档 §3.2。当前使用单表设计（无分区）。
-```
-
----
-
-**T017 — Mock Server：HTTP 基础（2h）**
-
-```
-依赖：T002（引用客户端 model 和 protocol 的接口理解，但不链接）
-产出：mock/CMakeLists.txt, mock/src/main.cpp, mock/src/mock_server.h
-验收：
-  □ 独立 CMake 项目，find_package Qt6 Core Network WebSockets
-  □ MockServer 类：start(httpPort, wsPort) / stop()
-  □ main.cpp 启动 QCoreApplication + MockServer
-  □ 内置硬编码测试用户数据（id=1001 "张三", id=1002 "李四"）
-  □ HTTP POST /api/v1/auth/login → 返回 {"code":0, "data":{"access_token":"mock_token_xxx","user_id":1001}}
-  □ curl 可验证
-```
-
----
-
-**T018 — Mock Server：WebSocket 消息收发（2h）**
-
-```
-依赖：T017
-产出：mock/src/mock_server.cpp（更新）
-验收：
-  □ QWebSocketServer 监听独立端口
-  □ 客户端连接后，Mock Server 主动发送一条 "欢迎使用云融 Mock Server" 文本消息
-  □ 客户端发送 JSON 帧 {"type":"msg","seq":1,"payload":{"text":"hello"}}
-    → Mock Server 回复 {"type":"ack","seq":1} + 转发消息给所有连接的客户端
-  □ 两个客户端同时连接可互发消息（模拟群聊广播）
-  □ 支持 ping/pong（收到 {"type":"ping"} 回复 {"type":"pong"}）
-```
-
----
-
-**T019 — Mock Server：场景加载（1h）**
-
-```
-依赖：T018
-产出：mock/scenarios/normal_chat.json, mock/src/mock_server.cpp（更新）
-验收：
-  □ normal_chat.json 定义 users/conversations/messages 数据集
-  □ MockServer::loadScenario(path) 读取 JSON
-  □ 模拟登录返回对应 scenario 中的 user
-  □ 会话列表 API 返回 scenario 中定义的 conversations
-```
-
----
-
-**T020 — 首次端到端验证（1h）**
-
-```
-依赖：T012, T019
-产出：无新文件（验证任务）
-验收：
-  □ 启动 Mock Server（mock_server --scenario normal_chat.json）
-  □ 启动客户端（yunrong_client），控制台日志显示 Logger 初始化成功
-  □ 客户端配置指向 Mock Server 的 HTTP/WS 端口
-  □ （手动验证，不要求代码实现）客户端可调用 Mock Server 登录 API 拿到 token
-说明：此为 Phase 1 出口检查点，确认骨架链路全通。实际登录从 GUI 发起在 Phase 5 实现。
-```
-
----
-
-## Phase 2：客户端核心层（T021–T055）
-
-> 出口标准：yunrong_core 静态库完整可用，网络/数据/基础设施全部通过单元测试，覆盖率 ≥ 70%。
-
-### 第 3–4 周：Protocol + WebSocket
-
----
-
-**T021 — Protocol::encode / decode JSON 文本帧（3h）**
-
-```
-依赖：T006, T009
-产出：client/src/core/net/protocol.cpp（完整实现）
-验收：
-  □ encodeAuth(token, seq) → JSON 字符串，含 ver/type/seq/ts/payload
-  □ encodeMessage(convId, contentBody, seq) → JSON 字符串
-  □ encodeAck(ackSeq) → JSON 字符串
-  □ encodeRead(convId, readToSeq) → JSON 字符串
-  □ encodeSync(sinceSeq, limit) → JSON 字符串
-  □ decode(jsonStr) → 结构体 DecodedFrame {type, seq, ts, payload}
-  □ 非法 JSON → 返回 std::nullopt 或抛异常
-  □ 单元测试覆盖所有 encode/decode 配对
-```
-
----
-
-**T022 — Protocol::encode / decode 二进制帧（1.5h）**
-
-```
-依赖：T021
-产出：client/src/core/net/protocol.cpp（更新）
-验收：
-  □ encodeThumbnail(data) → QByteArray，格式 [TotalLen 4B|Type 0x01|Payload]
-  □ decodeBinaryFrame(bytes) → {type, payload}
-  □ TotalLen 大端序
-  □ 单元测试：编解码往返一致
-```
-
----
-
-**T023 — WsClient 基础连接/断开/收发（3h）**
-
-```
-依赖：T021
-产出：client/src/core/net/ws_client.cpp（完整实现）
-验收：
-  □ connect(url, token) → QWebSocket 建立连接，URL 包含 ?token=xxx
-  □ disconnect() → 关闭连接
-  □ send(jsonStr) → 发送文本帧
-  □ 信号 messageReceived(QString) 收到服务端文本帧时触发
-  □ 信号 connected() / disconnected()
-  □ 信号 error(QString)
-  □ 自动处理 TLS（wss:// 开头的 URL）
-  □ 单元测试：使用 Mock Server（T018）验证连接 + 收发
-```
-
----
-
-**T024 — Heartbeat 心跳检测（1.5h）**
-
-```
-依赖：T023
-产出：client/src/core/net/heartbeat.cpp（完整实现）
-验收：
-  □ 构造函数注入 WsClient&，监听其 messageReceived 信号
-  □ 服务端发送 {"type":"ping"} → 自动回复 {"type":"pong"}
-  □ 90 秒未收到任何帧（含 ping）→ 触发信号 timeout()
-  □ 不主动发 ping（心跳由服务端主导，与 03 号协议文档一致）
-  □ 单元测试：Mock Server 控制 ping 发送间隔，验证超时触发
-```
-
----
-
-**T025 — ReconnectStrategy 指数退避（1.5h）**
-
-```
-依赖：无（纯算法类）
-产出：client/src/core/net/reconnect_strategy.cpp（完整实现）
-验收：
-  □ nextDelay() 返回序列：1s, 2s, 4s, 8s, 16s, 30s, 60s（第 7 次及之后固定 60s）
-  □ maxRetries() = 10，超过后返回 -1 表示放弃
-  □ reset() 重置到初始状态
-  □ 单元测试：验证序列正确
-```
-
----
-
-**T026 — HttpClient 基础（2h）**
-
-```
-依赖：T002
-产出：client/src/core/net/http_client.cpp（完整实现）
-验收：
-  □ get(url, headers) → 异步，通过信号返回 response(body, statusCode)
-  □ post(url, jsonBody, headers) → 同上
-  □ 自动注入 Authorization: Bearer <token>（通过 setToken 设置）
-  □ 超时 10s → 信号 error(timeout)
-  □ 单元测试：Mock Server HTTP 端点验证 GET/POST
-```
-
----
-
-**T027 — ConnectionMgr 外观（2h）**
-
-```
-依赖：T023, T026, T025
-产出：client/src/core/net/connection_mgr.cpp（完整实现）
-验收：
-  □ 持有 WsClient 和 HttpClient 实例
-  □ setServerConfig(host, port, tls)
-  □ connectToServer(token) → 建立 WS 连接 + 配置 HTTP base URL
-  □ 连接断开时自动调用 ReconnectStrategy 重连
-  □ 重连成功后自动发送 auth 帧
-  □ 信号 connectionStateChanged(enum State)
-  □ 单元测试：Mock Server 模拟断线→重连流程
-```
-
----
-
-**T028 — Protocol + WS 全路径集成测试（1.5h）**
-
-```
-依赖：T021–T027
-产出：client/tests/integration/test_ws_protocol.cpp
-验收：
-  □ 测试用例：客户端登录 → 发送消息 → 收到 ACK → 状态变为 Delivered
-  □ 测试用例：服务端推送消息 → 客户端解码 → 去重（重复 seq 丢弃）
-  □ 测试用例：心跳超时 → 触发重连 → 重连成功 → 收到 sync_data
-```
-
----
-
-### 第 5 周：HTTP 客户端完善 + RateLimiter
-
----
-
-**T029 — RateLimiter 令牌桶（1.5h）**
-
-```
-依赖：无
-产出：client/src/core/net/rate_limiter.cpp（完整实现）
-验收：
-  □ 构造 RateLimiter(bytesPerSec)
-  □ tryConsume(n) → bool（是否有足够令牌）
-  □ 内部令牌桶算法：每秒补充 tokens，上限为 burst size（= bytesPerSec）
-  □ 线程安全（std::mutex）
-  □ 单元测试：快速消耗→拒绝→等待补充→恢复
-```
-
----
-
-**T030 — HttpClient 完善：重试 + 并发控制 + 文件上传（2.5h）**
-
-```
-依赖：T026, T029
-产出：client/src/core/net/http_client.cpp（更新）
-验收：
-  □ 网络超时自动重试（最多 3 次），仅幂等请求（GET/PUT）
-  □ 同一时刻最多 6 个并发请求（内部队列）
-  □ uploadFile(path, url) → POST multipart/form-data，每块 1MB
-  □ downloadFile(url, destPath) → GET + Range 分块下载，断点续传
-  □ 信号 uploadProgress / downloadProgress(id, progress, speed)
-  □ 单元测试：Mock Server 模拟分块上传/下载 + 中途断连恢复
-```
-
----
-
-### 第 6 周：数据层
-
----
-
-**T031 — SqliteStore 初始化 + 建表（2h）**
-
-```
-依赖：T006, T002
-产出：client/src/core/data/sqlite_store.cpp（实现 init + 建表）
-验收：
-  □ init(dbPath) → 打开 SQLite，执行 PRAGMA（WAL 模式/foreign_keys/cache_size）
-  □ 自动建表：conversations/messages/contacts/files/tasks/config/drafts
-  □ 表结构与 04-数据库设计文档 §2 对齐
-  □ 重复 init 不报错（IF NOT EXISTS）
-  □ 单元测试：init → 检查 sqlite_master 中表是否存在
-```
-
----
-
-**T032 — SqliteStore 消息 CRUD（3h）**
-
-```
-依赖：T031
-产出：client/src/core/data/sqlite_store.cpp（更新）
-验收：
-  □ saveMessage(msg) → INSERT INTO messages
-  □ getMessages(convId, sinceSeq, limit) → SELECT ... WHERE conv_id=? AND server_seq>? ORDER BY server_seq LIMIT ?
-  □ getLastServerSeq() → SELECT MAX(server_seq) FROM messages
-  □ searchMessages(keyword) → SELECT ... WHERE content_body LIKE '%keyword%'
-  □ updateMessageStatus(msgId, status)
-  □ revokeMessage(msgId) → UPDATE SET revoked=1
-  □ 单元测试：CRUD 全路径 + 边界（空表/大量数据）
-```
-
----
-
-**T033 — SqliteStore 会话 CRUD（1.5h）**
-
-```
-依赖：T031
-产出：client/src/core/data/sqlite_store.cpp（更新）
-验收：
-  □ upsertConversation(conv) → INSERT OR REPLACE
-  □ getConversations(sortBy) → SELECT ... ORDER BY is_pinned DESC, last_msg_time DESC
-  □ updateUnreadCount(convId, count)
-  □ updateLastReadSeq(convId, seq)
-  □ 单元测试
-```
-
----
-
-**T034 — SqliteStore 联系人/文件/配置（1.5h）**
-
-```
-依赖：T031
-产出：client/src/core/data/sqlite_store.cpp（更新）
-验收：
-  □ saveContacts(list) → 批量 INSERT OR REPLACE
-  □ getContacts() → SELECT ... ORDER BY department_id, display_name
-  □ searchContacts(keyword) → LIKE 搜索
-  □ saveFileTransfer / getFileTransfers / updateFileTransferProgress
-  □ getConfig / setConfig（键值对）
-  □ 单元测试
-```
-
----
-
-**T035 — CacheMgr 内存缓存（2h）**
-
-```
-依赖：T006
-产出：client/src/core/data/cache_mgr.cpp（完整实现）
-验收：
-  □ getCachedConversations() → unordered_map<convId, Conversation>
-  □ updateConversationCache(conv) → 更新或新增
-  □ getOnlineStatus(userId) → OnlineStatus，未知返回 Offline
-  □ setOnlineStatus(userId, status)
-  □ LRU 淘汰：会话缓存上限 50 条，超出淘汰最久未访问
-  □ 线程安全（shared_mutex）
-  □ 单元测试
-```
-
----
-
-**T036 — SyncMgr 同步引擎（3h）**
-
-```
-依赖：T032, T021
-产出：client/src/core/data/sync_mgr.cpp（完整实现）
-验收：
-  □ requestSync(sinceSeq) → 发送 {"type":"sync","payload":{"since_seq":X,"limit":200}}
-  □ applySyncData(json) → 解析 sync_data 帧，批量写入 messages + conversations
-  □ 处理 has_more → 自动继续请求下一批
-  □ applyContactsDelta(json) → 增量更新联系人缓存
-  □ 信号 syncCompleted()
-  □ 单元测试：Mock Server 返回多批 sync_data，验证全量正确落库
-```
-
----
-
-### 第 7 周：基础设施完整实现
-
----
-
-**T037 — ThreadPool 完整实现（2h）**
-
-```
-依赖：T007
-产出：client/src/core/infra/thread_pool.cpp（完整实现）
-验收：
-  □ 构造时创建 N 个 worker 线程，等待任务
-  □ enqueue(F&&, Args...) → 返回 std::future<result>
-  □ 析构时安全关闭（stop_=true, notify_all, join 所有线程）
-  □ 任务队列有上限（默认 256），超出时 enqueue 阻塞
-  □ 单元测试：投递 100 个任务 → 验证全部执行 + 结果正确 + 线程复用
-```
-
----
-
-**T038 — MsgBus 无锁队列（2h）**
-
-```
-依赖：T008
-产出：client/src/core/infra/msg_bus.cpp（更新，或仅头文件模板实现）
-验收：
-  □ 模板类 MsgBus<T>
-  □ push(T) → 非阻塞写入
-  □ tryPop(T&) → 非阻塞读取，返回 bool
-  □ size() → 近似大小
-  □ 线程安全：至少使用 std::mutex（Phase 2 阶段接受有锁版本；无锁版本 v2 优化）
-  □ 单元测试：2 写线程 + 1 读线程，10000 条消息无丢失无重复
-```
-
----
-
-**T039 — Crypto 完整实现（1.5h）**
-
-```
-依赖：T008
-产出：client/src/core/infra/crypto.cpp（完整实现）
-验收：
-  □ sha256Hex(std::string) → 使用 QCryptographicHash::Sha256，返回 hex 字符串
-  □ sha256File(path) → 分块读取文件（每块 1MB），累计哈希
-  □ 单元测试：已知字符串/文件的 SHA-256 预期值对比
-```
-
----
-
-### 第 8 周：核心层集成 + 测试覆盖补充
-
----
-
-**T040 — 核心层全模块联调（3h）**
-
-```
-依赖：T027, T036, T037, T038, T039
-产出：client/tests/integration/test_core_pipeline.cpp
-验收：
-  □ 测试用例：启动 Mock Server → ConnectionMgr 连接 → 发送消息 → 
-    收到 ACK → SqliteStore 落库 → CacheMgr 更新会话缓存
-  □ 测试用例：Mock Server 推送消息 → Protocol 解码 → SyncMgr 应用 → 
-    SqliteStore 写入 → 通知上层（通过信号验证）
-  □ 测试用例：模拟断网 → ReconnectStrategy 重连 → SyncMgr 拉取增量
-```
-
----
-
-**T041 — 补充单元测试至 70% 覆盖率（3h）**
-
-```
-依赖：T040
-产出：client/tests/unit/*.cpp（补充）
-验收：
-  □ gtest 过滤器运行全部测试，无 FAIL
-  □ 重点覆盖：Protocol（所有帧类型编解码）、ReconnectStrategy（所有状态转移）、
-    SqliteStore（空表/边界/并发）、RateLimiter（令牌消耗/补充）
-  □ 集成测试覆盖核心数据流路径
-说明：不强制工具测量覆盖率百分比，以"关键路径 + 边界条件"覆盖为准。
-```
-
----
-
-**T042 — Phase 2 出口检查（1h）**
-
-```
-依赖：T041
-产出：无新文件
-验收：
-  □ cmake --preset ci-debug && cmake --build && ctest 全部通过
-  □ 所有 TODO 标记已解决或转为 Issue（Gitee）
-  □ 与 03-通信协议文档 逐帧类型对照，确认全部实现或明确标注"Phase 4 实现"
-```
-
----
-
-## Phase 3：Go 后端骨架（T043–T060）
-
-> 出口标准：客户端 + Go 后端完整消息流打通。每任务 1–3h。
-
----
-
-**T043 — JWT 签发与验证（2h）**
-
-```
-依赖：T015（server/ 项目就位）
-产出：server/internal/handler/auth.go（完整实现）
-验收：
-  □ POST /api/v1/auth/login → 验证用户名密码 → 返回 access_token + refresh_token + user_id
-  □ access_token 有效期 2h，refresh_token 有效期 7d
-  □ authMiddleware → 从 Authorization: Bearer <token> 提取并验证 JWT
-  □ 验证失败返回 401
-  □ 单元测试：go test 覆盖登录成功/密码错误/token 过期
-```
-
----
-
-**T044 — Token 刷新 + 登出（1h）**
-
-```
-依赖：T043
-产出：server/internal/handler/auth.go（更新）
-验收：
-  □ POST /api/v1/auth/refresh → 验证 refresh_token → 返回新的 token pair
-  □ POST /api/v1/auth/logout → 将 token 加入黑名单（内存即可，或标记 revoked）
-```
-
----
-
-**T045 — 联系人 API（1.5h）**
-
-```
-依赖：T043
-产出：server/internal/handler/contacts.go（完整实现）
-验收：
-  □ GET /api/v1/contacts → 分页返回联系人列表（含在线状态）
-  □ GET /api/v1/contacts/search?q=keyword → LIKE 搜索
-  □ GET /api/v1/departments → 树形部门结构
-```
-
----
-
-**T046 — 会话 API（2h）**
-
-```
-依赖：T043
-产出：server/internal/handler/conversations.go（完整实现）
-验收：
-  □ GET /api/v1/conversations → 当前用户的会话列表（按 last_msg_time 倒序）
-  □ POST /api/v1/conversations → 创建新会话（私聊或群聊）
-  □ GET /api/v1/conversations/:id/messages?since_seq=X&limit=200 → 游标分页
-  □ GET /api/v1/conversations/:id/messages/search?q=keyword → 全文搜索
-```
-
----
-
-**T047 — WebSocket Hub 完善（3h）**
-
-```
-依赖：T046
-产出：server/internal/ws/hub.go（完整重写）
-验收：
-  □ Hub 内部二级路由：map[convID] → map[userID] → []*Client
-  □ SendToConversation(convID, msg) → 只投递给该会话成员
-  □ SendToUser(userID, msg) → 投递给该用户的所有在线设备
-  □ Register / Unregister 并发安全
-  □ readPump：解析 JSON 帧 → 根据 type 分发到对应 handler
-  □ writePump：从 Send chan 读取 → WriteMessage
-  □ 单元测试：go test 模拟多 client 连接/断开/消息路由
-```
-
----
-
-**T048 — WebSocket 消息处理（3h）**
-
-```
-依赖：T047
-产出：server/internal/ws/handler.go（新文件）
-验收：
-  □ 收到 {"type":"msg"} → 校验 seq → 存储到 PG → 回复 ACK → 路由到目标会话
-  □ 收到 {"type":"msg_read"} → 更新 conversation_members.last_read_seq → 通知对方
-  □ 收到 {"type":"msg_revoke"} → 标记消息 revoked → 广播给会话成员
-  □ 收到 {"type":"msg_edit"} → 更新消息 content_body + edited_at → 广播
-  □ 收到 {"type":"sync"} → 查询 since_seq 后的消息 → 返回 sync_data
-  □ 去重：收到的 seq ≤ last_recv_seq 视为重复，直接回复 ACK 但丢弃
-```
-
----
-
-**T049 — 任务 API（1.5h）**
-
-```
-依赖：T043
-产出：server/internal/handler/tasks.go（完整实现）
-验收：
-  □ GET /api/v1/tasks → 按状态筛选（pending/done/rejected）
-  □ POST /api/v1/tasks/:id/handle → 处理任务（通过/驳回），推送 notify 给发起方
-  □ 任务状态变更通过 WS 实时推送
-```
-
----
-
-**T050 — 文件 API（2.5h）**
-
-```
-依赖：T043
-产出：server/internal/handler/files.go（完整实现）
-验收：
-  □ POST /api/v1/files/check → 根据 SHA-256 检查文件是否已存在（秒传判断）
-  □ POST /api/v1/files/upload/:upload_id/chunks/:index → 接收分块，写入临时文件
-  □ POST /api/v1/files/upload/:upload_id/complete → 校验 SHA-256 → 移动至存储目录 → 返回 URL
-  □ GET /api/v1/files/download?url=... → Range 分块下载
-```
-
----
-
-**T051 — 后端全 API 集成测试（3h）**
-
-```
-依赖：T043–T050
-产出：server/internal/handler/*_test.go（新增/补充）
-验收：
-  □ go test ./... 全部通过
-  □ 测试覆盖：登录→Token→创建会话→WS 收发消息→文件上传/下载→任务处理
-  □ 使用 testcontainers-go 或 Docker 启动 PG 实例做集成测试（可选；至少用 mock DB）
-```
-
----
-
-**T052 — Phase 3 出口：前后端首次对接（2h）**
-
-```
-依赖：T042, T051
-产出：无新文件（验证任务）
-验收：
-  □ 客户端（yunrong_core）连接 Go 后端
-  □ 登录 → 拿到 token → WS 连接 → 发送消息 → 收到 ACK → 消息落库
-  □ 两个客户端实例互发消息可收到
-  □ Phase 3 出口检查清单通过
-```
-
----
-
-## Phase 4：业务逻辑层（T053–T070）
-
-> 出口标准：IM / 任务 / 文件三大业务闭环，客户端可独立演示核心功能。
-
----
-
-**T053 — IMService 消息发送全链路（3h）**
-
-```
-依赖：T027, T032, T036
-产出：client/src/core/service/im_service.cpp（完整实现）
-验收：
-  □ sendTextMessage(convId, text) → Worker Pool 编码 → ConnectionMgr 发送 → 
-    收到 ACK → 更新消息状态为 Delivered → 通知 GUI（信号）
-  □ sendImageMessage(convId, imagePath) → 先上传文件 → 拿到 URL → 发消息
-  □ 发送失败 → 消息状态 Failed → 支持手动重发
-  □ 离线消息排队：发送时网络断开 → 存入 offline_queue → 恢复后自动重发
-```
-
----
-
-**T054 — IMService 消息接收 + 路由（2.5h）**
-
-```
-依赖：T053
-产出：client/src/core/service/im_service.cpp（更新）
-验收：
-  □ 收到 WS 推送消息 → Worker Pool 批量解码 → 去重（server_seq）→ SqliteStore 落库 → 
-    更新 CacheMgr 会话摘要 → 信号 newMessage(msg)
-  □ 收到 msg_read → 更新本地消息状态为 Read
-  □ 收到 msg_revoke → 本地消息标记 revoked → 信号 messageRevoked(msgId)
-  □ 收到 msg_edit → 更新本地消息 content_body + edited 标记
-```
-
----
-
-**T055 — IMService 会话管理（2h）**
-
-```
-依赖：T053, T054
-产出：client/src/core/service/im_service.cpp（更新）
-验收：
-  □ 获取会话列表（优先 CacheMgr，未命中查 SqliteStore）
-  □ 未读计数管理：新消息到达时 +1，用户打开会话时清零 + 发送 msg_read
-  □ 会话置顶/免打扰（更新本地 + 同步远端）
-  □ 创建新会话
-```
-
----
-
-**T056 — FileService 上传编排（2.5h）**
-
-```
-依赖：T030
-产出：client/src/core/service/file_service.cpp（完整实现）
-验收：
-  □ uploadFile(filePath) → SHA-256 → 秒传检查 → 分块上传 → 完成后返回 URL
-  □ 信号 uploadProgress(id, progress, speed) 实时更新
-  □ 暂停/恢复/取消
-  □ 断点续传：记录 TransferState → 重启后从 nextChunk 继续
-```
-
----
-
-**T057 — FileService 下载编排（1.5h）**
-
-```
-依赖：T056
-产出：client/src/core/service/file_service.cpp（更新）
-验收：
-  □ downloadFile(url, destPath) → Range 分块下载 → SHA-256 校验
-  □ 信号 downloadProgress(id, progress, speed)
-  □ 暂停/恢复/取消 + 断点续传
-```
-
----
-
-**T058 — TaskService（1.5h）**
-
-```
-依赖：T032
-产出：client/src/core/service/task_service.cpp（完整实现）
-验收：
-  □ 从服务端拉取任务列表 → 本地缓存
-  □ 按状态筛选：待处理/已处理/我发起的
-  □ 处理操作：通过/驳回 → POST /api/v1/tasks/:id/handle
-  □ 收到 WS notify 新任务 → 弹窗提醒（通过信号通知 GUI）
-```
-
----
-
-**T059 — ReportService 骨架（1h）**
-
-```
-依赖：T032
-产出：client/src/core/service/report_service.cpp（骨架实现）
-验收：
-  □ getMessageStats(days) → 按天聚合消息数（查询本地 SQLite）
-  □ getFileStats(days) → 按天聚合传输量
-  □ 返回数据结构供 GUI 绘制图表
-```
-
----
-
-**T060 — Phase 4 集成测试 + 出口检查（2h）**
-
-```
-依赖：T053–T059
-产出：client/tests/integration/test_business_logic.cpp
-验收：
-  □ 测试：IM 发送→ACK→落库→状态更新全链路
-  □ 测试：文件上传→秒传命中→跳过上传
-  □ 测试：任务推送→处理→状态同步
-  □ Phase 4 出口清单通过
-```
-
----
-
-## Phase 5：GUI（T061–T092）
-
-> 出口标准：完整桌面客户端，全部界面可交互。每任务 1–3h。
-
----
-
-**T061 — MainWindow 三栏布局（2h）**
-
-```
-依赖：T003
-产出：client/src/gui/main_window.h, client/src/gui/main_window.cpp
-验收：
-  □ 左侧导航栏（64px 固定宽度，图标竖排：消息/任务/文件/联系人/设置）
-  □ 中间内容区（QStackedWidget 切换视图）
-  □ 右侧信息面板（可选显示/隐藏，默认 280px）
-  □ 窗口最小尺寸 800×600，默认 1200×800
-```
-
----
-
-**T062 — 全局样式 QSS（1.5h）**
-
-```
-依赖：T061
-产出：client/resources/style.qss, client/src/app/main.cpp（更新加载 QSS）
-验收：
-  □ 统一的配色方案（浅色主题）
-  □ 导航栏背景色、选中态高亮
-  □ 会话列表 hover/selected 状态
-  □ QSS 通过 Qt 资源文件 (.qrc) 加载
-```
-
----
-
-**T063 — 登录窗口（2h）**
-
-```
-依赖：T062
-产出：client/src/gui/login_window.h, client/src/gui/login_window.cpp
-验收：
-  □ 用户名 + 密码输入框 + 登录按钮
-  □ "记住密码"复选框（存入 ConfigManager）
-  □ 登录成功 → 保存 token → 切换到主窗口
-  □ 登录失败 → 显示错误提示
-  □ 自动登录：启动时检查是否有有效 token → 跳过登录界面
-```
-
----
-
-**T064 — ConversationListModel + Delegate（3h）**
-
-```
-依赖：T006, T055
-产出：
-  client/src/gui/models/conversation_list_model.h/.cpp
-  client/src/gui/delegates/conversation_delegate.h/.cpp
-验收：
-  □ Model 实现 QAbstractListModel，数据源来自 IMService 的会话列表
-  □ Delegate 绘制：头像（圆形）+ 会话名 + 最后消息预览 + 时间 + 未读角标
-  □ 未读角标：红色圆形，数字 >99 显示 "99+"
-  □ 置顶会话有视觉区分（浅色背景）
-  □ 免打扰会话显示静音图标
-```
-
----
-
-**T065 — 会话列表视图（1.5h）**
-
-```
-依赖：T064, T061
-产出：client/src/gui/views/conversation_list_view.h/.cpp
-验收：
-  □ QListView + ConversationListModel + ConversationDelegate
-  □ 点击会话 → 切换右侧聊天视图
-  □ 右键菜单：置顶/取消置顶、免打扰、删除会话
-  □ 实时排序：新消息到达时置顶
-```
-
----
-
-**T066 — MessageListModel + MessageDelegate（4h）**
-
-```
-依赖：T006, T054
-产出：
-  client/src/gui/models/message_list_model.h/.cpp
-  client/src/gui/delegates/message_delegate.h/.cpp
-验收：
-  □ Model 实现 QAbstractListModel，数据源来自 IMService
-  □ Delegate 自适应高度（根据文本内容计算）
-  □ 文本消息气泡：圆角矩形，自己的靠右（蓝色），对方的靠左（灰色）
-  □ 图片消息：缩略图 + 点击查看原图
-  □ 文件消息：文件图标 + 文件名 + 大小 + 下载按钮
-  □ 系统消息：居中灰色文字（"xxx 撤回了一条消息"）
-  □ 消息状态指示：发送中（旋转图标）、已送达（单勾）、已读（双勾蓝）、失败（红色感叹号）
-  □ 撤回消息显示 "你撤回了一条消息" / "对方撤回了一条消息"
-  □ 编辑过的消息显示 "(已编辑)" 标记
-  □ 支持文本选中 + 复制
-  □ 右键菜单：复制、引用、撤回（自己的消息且 2 分钟内）
-```
-
----
-
-**T067 — 聊天输入框（2h）**
-
-```
-依赖：T066
-产出：client/src/gui/widgets/chat_input.h/.cpp
-验收：
-  □ QTextEdit 多行输入，高度自适应（最小 1 行，最大 5 行）
-  □ Enter 发送，Shift+Enter 换行
-  □ 发送按钮（右侧）
-  □ 表情选择按钮（骨架，Phase 5 不实现表情面板）
-  □ 文件/图片发送按钮 → 系统文件对话框 → 触发 FileService
-  □ 输入中检测：有内容时发送按钮亮起，为空时灰色
-```
-
----
-
-**T068 — 聊天视图整合（2h）**
-
-```
-依赖：T065, T066, T067
-产出：client/src/gui/views/chat_view.h/.cpp
-验收：
-  □ 顶部：会话标题 + 对方在线状态
-  □ 中部：消息列表（MessageListView），自动滚动到底部
-  □ 底部：聊天输入框
-  □ 加载历史消息：滚动到顶部时自动拉取更早的消息（分页）
-  □ @提及：输入 @ 弹出联系人选择器（骨架）
-```
-
----
-
-**T069 — ContactTreeModel + Delegate（2h）**
-
-```
-依赖：T006
-产出：
-  client/src/gui/models/contact_tree_model.h/.cpp
-  client/src/gui/delegates/contact_delegate.h/.cpp
-验收：
-  □ Model 实现 QAbstractItemModel，树形结构（部门→人员）
-  □ 懒加载：展开部门时才加载子节点
-  □ Delegate 绘制：头像 + 姓名 + 部门/职位 + 在线状态圆点
-  □ 搜索框：输入关键字实时过滤（QSortFilterProxyModel）
-```
-
----
-
-**T070 — 联系人视图（1h）**
-
-```
-依赖：T069, T061
-产出：client/src/gui/views/contact_view.h/.cpp
-验收：
-  □ QTreeView + ContactTreeModel + ContactDelegate
-  □ 搜索框在顶部
-  □ 双击联系人 → 创建/打开私聊会话 → 切换到聊天视图
-```
-
----
-
-**T071 — TaskListModel + Delegate（2h）**
-
-```
-依赖：T006, T058
-产出：
-  client/src/gui/models/task_list_model.h/.cpp
-  client/src/gui/delegates/task_delegate.h/.cpp
-验收：
-  □ Model 数据源来自 TaskService，支持按状态筛选
-  □ Delegate 绘制：任务标题 + 发起人 + 时间 + 优先级标签（红/黄/灰）
-  □ 状态筛选按钮：待处理 / 已处理 / 我发起的
-  □ 点击任务 → 展开详情（正文 + 操作按钮）
-  □ 操作按钮：通过 / 驳回（调用 TaskService::handleTask）
-```
-
----
-
-**T072 — 任务视图（1h）**
-
-```
-依赖：T071, T061
-产出：client/src/gui/views/task_view.h/.cpp
-验收：
-  □ QListView + TaskListModel + TaskDelegate
-  □ 顶部状态筛选栏
-  □ 收到新任务 → 列表顶部插入 + Toast 通知
-```
-
----
-
-**T073 — FilePanel 文件传输面板（2.5h）**
-
-```
-依赖：T006, T056, T057
-产出：
-  client/src/gui/views/file_panel.h/.cpp
-  client/src/gui/widgets/speed_chart.h/.cpp
-验收：
-  □ 上传/下载任务列表（QTableView）：文件名、大小、进度条、速度、
-    状态（传输中/暂停/完成/失败）、操作按钮（暂停/恢复/取消/重试）
-  □ FileService 的进度信号实时更新进度条和速度
-  □ QChartView 绘制实时传输速度曲线（上传 + 下载双线）
-  □ 传输历史：已完成的任务保留在列表中，支持清理
-```
-
----
-
-**T074 — 设置窗口（1.5h）**
+**T006 — WebSocket 收发 JSON 文本（2h）**
 
 ```
 依赖：T005
-产出：client/src/gui/views/settings_window.h/.cpp
+起点：WebSocket 可连接
+产出：修改 ws_client.h/cpp（增加收发接口）
 验收：
-  □ 通用：语言（骨架，仅中文）、开机启动
-  □ 网络：服务器地址 + 端口配置
-  □ 通知：消息通知开关、声音开关
-  □ 存储：本地数据路径 + 缓存大小显示 + 清除缓存按钮
-  □ 关于：版本号 + Git commit hash
-  □ 配置保存到 ConfigManager → 持久化到 JSON 文件
+  □ 发送 {"type":"ping"}，日志输出 "Sent: {\"type\":\"ping\"}"
+  □ 收到消息时日志输出完整 JSON 原文
+  □ 收到非 JSON 文本时日志输出警告 "Non-JSON message ignored"
+  □ 收发不崩溃
 ```
 
 ---
 
-**T075 — 系统托盘 + Toast 通知（2h）**
+**T007 — 心跳检测断开（1.5h）**
 
 ```
-依赖：T061, T054
-产出：
-  client/src/gui/system_tray.h/.cpp
-  client/src/gui/widgets/toast_notify.h/.cpp
+依赖：T006
+起点：WS 可收发
+产出：修改 ws_client.h/cpp（增加定时器和超时检测）
 验收：
-  □ QSystemTrayIcon：托盘图标 + 右键菜单（显示主窗口/退出）
-  □ 收到新消息 → 托盘图标闪烁 + 未读计数角标
-  □ Toast 通知：右上角滑入动画，3s 后自动消失
-  □ Toast 内容：发送者头像 + 名称 + 消息摘要
+  □ 每 30s 自动发送 ping
+  □ 90s 内未收到任何消息，日志输出 "Heartbeat timeout"
+  □ 超时后 ws_client 状态变为 Disconnected
+```
+
+---
+
+**T008 — 断线自动重连（1.5h）**
+
+```
+依赖：T007
+起点：心跳可检测断开
+产出：修改 ws_client.h/cpp（增加重连逻辑）
+验收：
+  □ 断开后自动尝试重连
+  □ 重连间隔指数增长：1s → 2s → 4s → 8s → 16s → 30s → 60s（封顶）
+  □ 重连成功日志输出 "Reconnected"
+  □ 连续 10 次失败后停止，日志输出 "Max reconnect attempts reached"
+```
+
+---
+
+**T009 — Mock Server：HTTP 启动和健康检查（2h）**
+
+```
+依赖：无（独立 Go 项目，与客户端并行开发）
+起点：server/ 目录不存在
+产出：server/go.mod  server/cmd/server/main.go
+验收：
+  □ go run ./cmd/server 启动，日志显示监听端口
+  □ curl http://localhost:8080/health → 200 {"status":"ok"}
+  □ Ctrl+C 正常退出，日志显示 "shutting down"
+```
+
+---
+
+**T010 — Mock Server：用户登录接口（1.5h）**
+
+```
+依赖：T009
+起点：/health 可访问
+产出：修改 main.go（增加 POST /api/v1/auth/login）
+验收：
+  □ POST {"username":"admin","password":"123456"} → 200 + access_token
+  □ 用户名或密码错误 → 401
+  □ 返回的 token 可用 jwt.io 解码，含 user_id 和 exp
+```
+
+---
+
+**T011 — Mock Server：WebSocket 升级和回声（2h）**
+
+```
+依赖：T010
+起点：HTTP 登录可用
+产出：修改 main.go（增加 GET /ws 路由 + gorilla/websocket upgrader）
+验收：
+  □ 用 wscat 连接 ws://localhost:8080/ws?token=xxx
+  □ 发送 {"type":"ping"} → 收到 {"type":"pong"}
+  □ 发送任意 JSON → 收到 {"type":"echo","payload":<原消息>}
+  □ 断开时服务端日志输出 "client disconnected"
+```
+
+---
+
+**T012 — Mock Server：单聊消息转发（2h）**
+
+```
+依赖：T011
+起点：WS 回声可用
+产出：修改 main.go（增加 Hub + 按 userID 路由）
+验收：
+  □ 客户端 A（token=user1）和 B（token=user2）同时连接
+  □ A 发送 {"type":"msg","to":"user2","body":"hello"}
+  □ B 收到 {"type":"msg","from":"user1","body":"hello"}
+  □ A 不收到自己发的消息
+```
+
+---
+
+## Phase 2：客户端核心能力（T013–T030）
+
+> 出口：客户端可通过 HTTP 登录、通过 WS 收发消息、消息本地 SQLite 落库、离线消息恢复后补拉。
+
+---
+
+### 第一轮：从 app/ 抽离已验证模块
+
+---
+
+**T013 — core 库：迁移 logger 和 config_mgr（1h）**
+
+```
+依赖：T003, T004
+起点：logger 和 config_mgr 在 app/ 下稳定运行
+产出：client/src/core/infra/logger.h/cpp  client/src/core/infra/config_mgr.h/cpp
+      client/src/core/CMakeLists.txt（新建 yunrong_core 静态库）
+验收：
+  □ app/ 中不再有 logger.cpp 和 config_mgr.cpp
+  □ app 链接 yunrong_core，编译通过
+  □ 程序行为与迁移前一致（日志、配置无变化）
+说明：只有被 app 验证过的模块才允许移入 core。未验证的代码不得放入 core。
+```
+
+---
+
+**T014 — HTTP 客户端：能调 Mock Server 登录（2h）**
+
+```
+依赖：T010（Mock Server 登录可用），T013（core 库可用）
+起点：Mock Server 可响应 /auth/login
+产出：client/src/core/net/http_client.h/cpp
+验收：
+  □ 程序启动后调用 POST /api/v1/auth/login
+  □ 日志输出服务端返回的 access_token
+  □ 网络不通时日志输出错误，不崩溃
+  □ token 过期时（Mock Server 可配短过期时间）日志输出 "Token expired"
+```
+
+---
+
+### 第二轮：消息收发通路
+
+---
+
+**T015 — 消息帧编解码（1.5h）**
+
+```
+依赖：T006（已验证 WS 可收发 JSON）
+起点：WS 可收发原始 JSON
+产出：client/src/core/net/protocol.h/cpp
+验收：
+  □ encode(type="msg", payload) 输出合法 JSON 帧，含 ver/type/seq/ts
+  □ decode(合法 JSON) 返回解析结果，type 字段正确
+  □ decode(非法 JSON) 不崩溃，返回错误
+  □ seq 在每次 encode 后自增
+```
+
+---
+
+**T016 — WS 客户端接入 Protocol（1h）**
+
+```
+依赖：T008（重连可用），T015（Protocol 可用）
+起点：WS 可收发原始 JSON，Protocol 可编解码
+产出：修改 ws_client.h/cpp（收发改用 Protocol 编解码）
+验收：
+  □ 发送消息走 Protocol::encode → WS send
+  □ 收到消息走 WS receive → Protocol::decode
+  □ 无效帧不崩溃，日志输出 "Invalid frame received"
+  □ 重连后 seq 从 0 重新开始
+```
+
+---
+
+**T017 — 发送消息等待 ACK（2h）**
+
+```
+依赖：T012（Mock Server 可转发消息），T016（WS 接入 Protocol）
+起点：Mock Server 可转发单聊，客户端 WS 可用 Protocol
+产出：修改 ws_client.h/cpp（增加 pending 表 + ACK 超时重传）
+验收：
+  □ 发送 msg 后不立即标记为"已送达"，等待 ACK
+  □ 5s 内收到 ACK → 日志 "Message delivered (seq=42)"
+  □ 5s 超时 → 重发（最多 3 次）
+  □ 3 次均失败 → 日志 "Message failed (seq=42)"
+  □ Mock Server 需回复 ACK（修改 T012 的 Mock Server 增加 ACK 回复）
+```
+
+---
+
+**T018 — 收到消息去重（1h）**
+
+```
+依赖：T017（发送有 ACK）
+起点：发送端有 ACK 机制
+产出：修改 ws_client.h/cpp（增加 last_recv_seq 去重）
+验收：
+  □ 收到 seq≤last_recv_seq 的消息 → 丢弃 + 日志 "Duplicate message seq=xxx"
+  □ 收到 seq>last_recv_seq 的消息 → 正常处理 + 更新 last_recv_seq
+  □ 用 Mock Server 模拟重复推送验证
+```
+
+---
+
+### 第三轮：本地持久化
+
+---
+
+**T019 — SQLite 初始化（1.5h）**
+
+```
+依赖：T013（core 库可用）
+起点：core 库可链接 Qt6::Sql
+产出：client/src/core/data/sqlite_store.h/cpp
+验收：
+  □ 程序启动时自动创建 yunrong.db（若不存在）
+  □ 自动执行建表 SQL（conversations / messages / contacts / file_transfers / config）
+  □ 日志输出 "SQLite opened: yunrong.db"
+  □ 第二次启动不重复建表（IF NOT EXISTS）
+  □ .db 文件已在 .gitignore 中
+```
+
+---
+
+**T020 — 消息写入 SQLite（1.5h）**
+
+```
+依赖：T018（收消息有去重），T019（SQLite 就绪）
+起点：收消息可去重，SQLite 已建表
+产出：修改 sqlite_store.h/cpp（增加 insertMessage）
+验收：
+  □ 收到一条消息后，调用 insertMessage 写入 messages 表
+  □ 日志输出 "Message stored: msg_id=xxx"
+  □ 重复 msg_id 写入时不崩溃（UNIQUE 约束）
+  □ 停掉程序，用 sqlite3 命令行检查 yunrong.db 中有刚才的消息
+```
+
+---
+
+**T021 — 消息按会话查询（1h）**
+
+```
+依赖：T020（消息可写入）
+起点：messages 表有数据
+产出：修改 sqlite_store.h/cpp（增加 queryMessages）
+验收：
+  □ queryMessages(conv_id, limit=20, before_seq=X) 返回 ≤20 条消息
+  □ 结果按 timestamp DESC 排列
+  □ 空会话返回空列表，不崩溃
+```
+
+---
+
+### 第四轮：会话管理与同步
+
+---
+
+**T022 — 会话列表（1.5h）**
+
+```
+依赖：T021（消息可查询）
+起点：可按会话查消息
+产出：修改 sqlite_store.h/cpp（增加 conversations 表 CRUD）
+      client/src/core/data/sync_mgr.h/cpp（新建）
+验收：
+  □ 收到新消息时自动更新对应会话的 last_msg_preview 和 last_msg_time
+  □ 新会话自动插入 conversations 表
+  □ sync_mgr 维护内存中的会话列表，按 last_msg_time 降序
+  □ 日志输出 "Conversation list updated: N conversations"
+```
+
+---
+
+**T023 — 未读计数（1h）**
+
+```
+依赖：T022（会话列表可用）
+起点：会话列表可维护
+产出：修改 sync_mgr.h/cpp（增加未读计数逻辑）
+      conversations 表增加 unread_count 字段
+验收：
+  □ 非当前会话的新消息使 unread_count +1
+  □ 当前会话的新消息不增加未读计数
+  □ 切换到某会话时 unread_count 清零
+  □ 日志输出 "Unread: conv=2001 count=5"
+```
+
+---
+
+**T024 — 离线消息补拉（2h）**
+
+```
+依赖：T017（ACK 机制可用），T022（会话列表可用）
+起点：发送/接收链路完整
+产出：修改 ws_client.h/cpp（重连后发送 sync 帧）
+      修改 Mock Server（增加 sync_data 响应）
+验收：
+  □ 客户端重连后自动发送 {"type":"sync","since_seq":<本地最大seq>}
+  □ Mock Server 返回 since_seq 之后的所有消息
+  □ 客户端收到后逐条写入 SQLite + 更新会话列表
+  □ 日志输出 "Sync complete: N messages received"
+```
+
+---
+
+**T025 — 已读回执（1.5h）**
+
+```
+依赖：T023（未读计数可用），T024（同步可用）
+起点：未读计数和同步就绪
+产出：修改 ws_client.h/cpp（增加 msg_read 帧发送）
+      修改 Mock Server（转发 msg_read 给对方）
+验收：
+  □ 用户打开会话时发送 {"type":"msg_read","conv_id":X,"read_to_seq":N}
+  □ 对方收到后日志输出 "Messages read: conv=X up_to_seq=N"
+  □ Mock Server 记录 last_read_seq
+```
+
+---
+
+### 第五轮：文件传输
+
+---
+
+**T026 — HTTP 文件上传（分块）（2.5h）**
+
+```
+依赖：T014（HTTP 客户端可用）
+起点：HTTP POST 可用
+产出：修改 http_client.h/cpp（增加 multipart + 分块上传接口）
+      修改 Mock Server（增加 POST /api/v1/files/upload 路由，保存到临时目录）
+验收：
+  □ 选择一个 5MB 测试文件，分 5 个 1MB 块上传
+  □ 每块上传后日志输出进度百分比
+  □ 全部上传完成后 Mock Server 返回 {"url":"/files/xxx"}
+  □ Mock Server 的临时目录中存在完整文件，SHA-256 与原文件一致
+```
+
+---
+
+**T027 — HTTP 文件下载（Range）（2h）**
+
+```
+依赖：T026（上传可用）
+起点：文件已上传到 Mock Server
+产出：修改 http_client.h/cpp（增加 Range 下载接口）
+验收：
+  □ 下载已上传的文件，分 4 个并发 Range 下载
+  □ 每完成一个 Range 日志输出进度
+  □ 下载完成后 SHA-256 与原文件一致
+  □ 中途取消下载不崩溃
+```
+
+---
+
+**T028 — 断点续传（1.5h）**
+
+```
+依赖：T026, T027
+起点：上传/下载通路可用
+产出：client/src/core/data/file_transfer_state.h/cpp（新建）
+验收：
+  □ 上传/下载时每完成一个块就写入 TransferState 到 SQLite
+  □ 程序崩溃后重启，读取 TransferState 从未完成的块继续
+  □ 不重复传输已完成的块
+  □ 传输完成后清理 TransferState
+```
+
+---
+
+**T029 — 文件秒传（1h）**
+
+```
+依赖：T026（上传可用）
+起点：文件可上传
+产出：修改 http_client.h/cpp（上传前发 file_check 请求）
+      修改 Mock Server（增加 POST /api/v1/files/check）
+验收：
+  □ 上传前先 POST /api/v1/files/check {"hash":"sha256:xxx"}
+  □ Mock Server 返回 {"exists":true} → 跳过上传，日志 "File exists, skip upload"
+  □ Mock Server 返回 {"exists":false} → 正常上传
+```
+
+---
+
+### 第六轮：缓冲
+
+---
+
+**T030 — 客户端端到端走查 + DEVLOG 补录（2h）**
+
+```
+依赖：T001–T029 全部完成
+验收：
+  □ 按以下场景逐条走查：登录→连 WS→收发消息→看 SQLite 有数据→
+    断网→消息发不出去→恢复网络→自动重连→补拉离线消息→文件上传→
+    文件下载→文件秒传
+  □ 每条场景日志输出符合预期
+  □ 发现的 bug 记录到 DEVLOG 并修复
+  □ DEVLOG Phase 1/2 补全
+```
+
+---
+
+## Phase 3：Go 后端正式实现（T031–T048）
+
+> 出口：Mock Server 被真实 Go 后端替代；所有 API 对接 PostgreSQL；WebSocket Hub 完整。
+
+---
+
+**T031 — Go 项目骨架 + PostgreSQL 连接池（1.5h）**
+
+```
+依赖：T009（Mock Server 结构可参考）
+起点：server/ 下有 Mock Server（将其移到 mock/ 保留）
+产出：server/cmd/server/main.go  server/internal/store/postgres.go
+      server/internal/store/migrations/001_initial_schema.sql
+验收：
+  □ go run ./cmd/server 启动，成功连接 PostgreSQL
+  □ 自动执行 migration 建表
+  □ 日志输出 "Connected to PostgreSQL, migrations applied"
+  □ /health 返回 200
+```
+
+---
+
+**T032 — 用户注册和登录（JWT）（2h）**
+
+```
+依赖：T031（DB 可用）
+起点：PostgreSQL 可用，users 表已建
+产出：server/internal/handler/auth.go
+验收：
+  □ POST /api/v1/auth/register → 写入 users 表 → 返回 token
+  □ POST /api/v1/auth/login → 验证密码 → 返回 token
+  □ 密码用 bcrypt 哈希存储
+  □ 错误密码 3 次后锁定账户 5 分钟（安全措施）
+```
+
+---
+
+**T033 — 认证中间件（1h）**
+
+```
+依赖：T032（登录可用）
+起点：JWT 签发可用
+产出：server/internal/handler/middleware.go
+验收：
+  □ 带有效 token 的请求通过
+  □ 无效/过期 token → 401
+  □ 缺失 Authorization header → 401
+  □ 通过中间件后 c.Get("user_id") 可获取用户 ID
+```
+
+---
+
+**T034 — 联系人列表 API（1.5h）**
+
+```
+依赖：T033（认证可用）
+起点：users 表有数据
+产出：server/internal/handler/contacts.go
+验收：
+  □ GET /api/v1/contacts → 分页返回所有用户
+  □ GET /api/v1/contacts?search=张三 → 模糊搜索
+  □ 每页默认 50 条，支持 page 参数
+```
+
+---
+
+**T035 — 部门树 API（1h）**
+
+```
+依赖：T033, T034（认证 + contacts 模式可参考）
+起点：departments 表已建
+产出：server/internal/handler/departments.go
+验收：
+  □ GET /api/v1/departments → 返回完整部门树（嵌套 JSON）
+  □ 叶子部门无 children 字段
+```
+
+---
+
+**T036 — WebSocket Hub（替代 Mock Server 的 Hub）（2h）**
+
+```
+依赖：T033（认证可用），T012（Mock Server Hub 逻辑可参考）
+起点：JWT 中间件可用
+产出：server/internal/ws/hub.go  server/internal/ws/client.go
+验收：
+  □ GET /ws?token=xxx → 升级为 WebSocket
+  □ 无效 token → 拒绝升级
+  □ 同一 userID 可从多设备同时连接
+  □ 客户端断开时 Hub 自动清理
+```
+
+---
+
+**T037 — 消息收发（WS 通路 + PostgreSQL 落库）（2.5h）**
+
+```
+依赖：T036（Hub 可用）
+起点：WebSocket Hub 就绪
+产出：server/internal/handler/messages.go（WS 消息处理）
+验收：
+  □ 客户端 A 发 msg → 服务端写入 messages 表 → 转发给 B
+  □ 服务端回复 ACK
+  □ B 不在线时消息持久化，B 上线后通过 sync 补拉
+  □ 服务端为每条消息分配全局递增 server_seq
+```
+
+---
+
+**T038 — 会话列表 API（1.5h）**
+
+```
+依赖：T037（消息可用）
+起点：messages 表有数据，conversation_members 表已建
+产出：server/internal/handler/conversations.go
+验收：
+  □ GET /api/v1/conversations → 返回当前用户的会话列表
+  □ 每个会话含 last_msg_preview, last_msg_time, unread_count
+  □ 按 last_msg_time 降序
+```
+
+---
+
+**T039 — 消息历史 API（1h）**
+
+```
+依赖：T037, T038
+起点：消息可收发，会话可用
+产出：修改 conversations.go（增加消息拉取接口）
+验收：
+  □ GET /api/v1/conversations/:id/messages?before_seq=100&limit=20
+  □ 返回 ≤20 条消息，按 server_seq DESC
+  □ 传入 before_seq=0 返回最新 20 条
+```
+
+---
+
+**T040 — 消息搜索 API（1.5h）**
+
+```
+依赖：T037（消息可用）
+起点：PostgreSQL 全文搜索可用
+产出：修改 conversations.go（增加搜索接口）
+验收：
+  □ GET /api/v1/conversations/:id/messages/search?q=会议
+  □ 返回匹配的消息列表，高亮关键词
+  □ 空结果返回空数组
+```
+
+---
+
+**T041 — 离线同步 API（2h）**
+
+```
+依赖：T037（server_seq 可用），T024（客户端 sync 逻辑可用）
+起点：全局 server_seq 就绪
+产出：修改 messages.go（增加 sync_data 响应）
+验收：
+  □ 客户端发送 {"type":"sync","since_seq":42}
+  □ 服务端返回 server_seq > 42 的所有消息（最多 200 条）
+  □ has_more=true 时客户端可继续 sync
+  □ 无新消息时返回空数组 + has_more=false
+```
+
+---
+
+**T042 — 已读回执（服务端）（1h）**
+
+```
+依赖：T041（同步可用），T025（客户端 msg_read 可用）
+起点：sync 机制就绪
+产出：修改 messages.go（增加 msg_read 处理）
+验收：
+  □ 收到 msg_read → 更新 conversation_members.last_read_seq
+  □ 转发 msg_read 给对方客户端
+```
+
+---
+
+**T043 — 文件上传 API（2h）**
+
+```
+依赖：T033（认证可用）
+起点：files 表已建
+产出：server/internal/handler/files.go
+验收：
+  □ POST /api/v1/files/check → 返回 exists + upload_id
+  □ POST /api/v1/files/upload/:upload_id/chunks/:idx → 保存到磁盘
+  □ POST /api/v1/files/upload/:upload_id/complete → SHA-256 校验 + 标记完成
+  □ 上传完成后返回可访问的 URL
+```
+
+---
+
+**T044 — 文件下载 API（1h）**
+
+```
+依赖：T043（上传可用）
+起点：文件已存储
+产出：修改 files.go（增加下载接口）
+验收：
+  □ GET /api/v1/files/download?file_id=X → 返回文件流
+  □ 支持 Range 头，返回 206 Partial Content
+  □ 不存在文件返回 404
+```
+
+---
+
+**T045 — 任务推送和列表 API（2h）**
+
+```
+依赖：T037（消息通路可用）
+起点：tasks 表已建
+产出：server/internal/handler/tasks.go
+验收：
+  □ POST /api/v1/tasks（管理员）→ 创建任务 → WS 推送给目标用户
+  □ GET /api/v1/tasks → 返回当前用户的任务列表
+  □ GET /api/v1/tasks?status=pending → 按状态筛选
+  □ POST /api/v1/tasks/:id/handle → 处理任务 → WS 通知发起人
+```
+
+---
+
+**T046 — 偏好设置 API（1h）**
+
+```
+依赖：T033（认证可用）
+起点：user_preferences 表已建
+产出：server/internal/handler/preferences.go
+验收：
+  □ GET /api/v1/preferences → 返回当前用户的偏好 JSON
+  □ PUT /api/v1/preferences → 覆盖写入
+  □ 不存在的键返回默认值
+```
+
+---
+
+**T047 — 后端集成测试（2h）**
+
+```
+依赖：T031–T046
+起点：全部 API 就绪
+验收：
+  □ 用 Go test 编写集成测试：注册→登录→发消息→查消息→上传文件→下载文件
+  □ 全部测试通过
+  □ go test ./... 覆盖率 ≥ 60%
+```
+
+---
+
+**T048 — 后端缓冲 + DEVLOG（1.5h）**
+
+```
+依赖：T047
+验收：
+  □ 修复发现的 bug
+  □ DEVLOG Phase 3 补全
+  □ 设计文档与实际实现不一致的地方回写文档
+```
+
+---
+
+## Phase 4：业务逻辑收敛（T049–T058）
+
+> 出口：客户端三大业务（IM / 文件 / 任务）通过 service 层调用，不直接操作 net/ 和 data/。
+
+---
+
+**T049 — IMService：收敛消息收发逻辑（2h）**
+
+```
+依赖：T018（收发可用），T021（查询可用），T023（未读可用）
+起点：app 中直接调用 ws_client 和 sqlite_store
+产出：client/src/core/service/im_service.h/cpp
+验收：
+  □ sendTextMessage(conv_id, text) 内部调 ws_client + 更新 SQLite
+  □ 收到消息时 im_service 回调 → 更新会话列表 + 未读计数
+  □ app 中不再直接调 ws_client 的收发接口
+  □ 已有功能（收发/去重/ACK/重传/已读）行为不变
+```
+
+---
+
+**T050 — FileService：收敛文件传输逻辑（2h）**
+
+```
+依赖：T026–T029（文件传输可用）
+起点：app 中直接调用 http_client 做文件传输
+产出：client/src/core/service/file_service.h/cpp
+验收：
+  □ uploadFile(path) 内部调 http_client 分块上传 + 进度回调
+  □ downloadFile(url, path) 内部调 http_client Range 下载 + 进度回调
+  □ app 中不再直接调 http_client 的文件接口
+  □ 已有功能（分块/续传/秒传）行为不变
+```
+
+---
+
+**T051 — TaskService：收敛任务逻辑（1.5h）**
+
+```
+依赖：T045（任务 API 可用）
+起点：任务 API 可调
+产出：client/src/core/service/task_service.h/cpp
+验收：
+  □ 从服务端拉取任务列表
+  □ 处理任务（通过/驳回）调 REST API
+  □ 任务状态变更通知通过 im_service 接收
+```
+
+---
+
+**T052 — SyncManager 完善：增量同步 + 冲突处理（2h）**
+
+```
+依赖：T024（离线补拉可用），T049（IMService 可用）
+起点：sync 基本可用
+产出：修改 sync_mgr.h/cpp（完善同步引擎）
+验收：
+  □ 上线后自动 sync 所有会话的增量消息
+  □ 离线期间的操作队列（发送/已读/撤回）在重连后按序重放
+  □ 服务端冲突（如同一消息被编辑两次）以 server_seq 大者为准
+```
+
+---
+
+**T053 — 消息撤回（1.5h）**
+
+```
+依赖：T049（IMService 可用）
+起点：IM 收发可用
+产出：修改 im_service.h/cpp（增加 revokeMessage）
+      conversations.go（服务端 msg_revoke 处理）
+验收：
+  □ 发送方在 2 分钟内可撤回
+  □ 撤回后双方客户端消息气泡变为"已撤回"
+  □ 超时撤回返回错误
+  □ 服务端消息 content_body 标记 revoked=true
+```
+
+---
+
+**T054 — 消息编辑（1h）**
+
+```
+依赖：T049（IMService 可用）
+起点：IM 收发可用
+产出：修改 im_service.h/cpp（增加 editMessage）
+验收：
+  □ 发送方可编辑自己的文本消息
+  □ 编辑后消息气泡显示"(已编辑)"标记
+  □ 图片/文件消息不可编辑
+```
+
+---
+
+**T055 — 联系人缓存（1.5h）**
+
+```
+依赖：T034（联系人 API 可用），T019（SQLite 可用）
+起点：服务端可返回联系人列表
+产出：修改 sqlite_store.h/cpp（增加 contacts 表 CRUD）
+      client/src/core/data/cache_mgr.h/cpp（新建联系人缓存）
+验收：
+  □ 首次登录后从服务端拉取全部联系人，写入本地 SQLite
+  □ 后续启动优先读本地，后台静默更新
+  □ 搜索联系人时优先搜本地（即时响应），后台补充服务端搜索结果
+```
+
+---
+
+**T056 — 业务层集成走查（2h）**
+
+```
+依赖：T049–T055
+验收：
+  □ 走查 IM 全流程：登录→同步→收发→撤回→编辑→已读
+  □ 走查文件全流程：上传→进度→下载→续传→秒传
+  □ 走查任务全流程：接收通知→列表→处理→结果通知
+  □ bug 修复 + DEVLOG 补全
+```
+
+---
+
+**T057 — 抽离 model 头文件（0.5h）**
+
+```
+依赖：T056（业务层稳定）
+起点：各模块的数据结构分散在 service/ 和 data/ 中
+产出：client/src/core/model/message.h conversation.h contact.h task.h file_transfer.h
+验收：
+  □ 5 个头文件包含各自的数据结构定义（从 service/data 中提取）
+  □ 编译通过
+  □ 不修改任何业务逻辑
+说明：model 是纯数据结构，从已验证的代码中提取——不是提前设计。
+```
+
+---
+
+**T058 — 缓冲 + DEVLOG（1h）**
+
+```
+依赖：T057
+验收：
+  □ 修复走查中发现的 bug
+  □ DEVLOG Phase 4 补全
+```
+
+---
+
+## Phase 5：GUI（T059–T076）
+
+> 出口：完整可交互的桌面客户端。每个视图独立任务、独立验收。
+
+---
+
+**T059 — 主窗口三栏布局（2h）**
+
+```
+依赖：T002（空白窗口），T022（会话列表数据可用）
+起点：空白窗口可启动，后台数据层完整
+产出：client/src/gui/main_window.h/cpp
+验收：
+  □ 左侧导航栏（64px 宽，图标竖排）
+  □ 中间内容区（默认显示会话列表）
+  □ 右侧信息面板（可选显示/隐藏）
+  □ 窗口最小宽度 800px，可拖拽调整
+```
+
+---
+
+**T060 — 导航栏切换视图（1.5h）**
+
+```
+依赖：T059（主窗口就绪）
+起点：三栏布局可用
+产出：修改 main_window.h/cpp（增加 QStackedWidget）
+验收：
+  □ 点击"消息"图标 → 内容区显示会话列表
+  □ 点击"联系人"图标 → 内容区显示占位文本"联系人"
+  □ 点击"任务"图标 → 内容区显示占位文本"任务"
+  □ 点击"文件"图标 → 内容区显示占位文本"文件"
+  □ 点击"设置"图标 → 内容区显示占位文本"设置"
+  □ 当前选中图标高亮
+```
+
+---
+
+**T061 — 登录窗口（2h）**
+
+```
+依赖：T014（HTTP 登录可用），T059（主窗口就绪）
+起点：HTTP 登录通路可用
+产出：client/src/gui/login_window.h/cpp
+验收：
+  □ 输入用户名+密码 → 点击登录 → 调 HTTP /auth/login
+  □ 登录成功 → 关闭登录窗口 → 显示主窗口
+  □ 登录失败 → 显示错误提示（红色文字）
+  □ "记住密码"复选框 → 勾选后下次自动填入
+  □ 回车键触发登录
+```
+
+---
+
+**T062 — 会话列表视图（2.5h）**
+
+```
+依赖：T022（会话列表数据可用），T059（主窗口就绪）
+起点：sync_mgr 维护会话列表
+产出：client/src/gui/views/conversation_list.h/cpp
+验收：
+  □ QListView 展示会话列表
+  □ 每项显示：头像（占位圆形）、会话名、最后消息预览、时间
+  □ 有未读消息的会话显示红色角标（数字）
+  □ 置顶会话显示在图钉图标
+  □ 点击某会话 → 日志输出 "Selected conversation: id=xxx"
+```
+
+---
+
+**T063 — 消息气泡控件（2.5h）**
+
+```
+依赖：T062（会话列表就绪）
+起点：会话列表可展示
+产出：client/src/gui/widgets/message_bubble.h/cpp
+验收：
+  □ 自己的消息靠右对齐，蓝色背景
+  □ 对方的消息靠左对齐，灰色背景
+  □ 文本消息自适应高度（支持多行）
+  □ 显示发送时间（HH:mm）
+  □ 显示消息状态图标（发送中/已送达/已读/失败）
+```
+
+---
+
+**T064 — 聊天视图（2.5h）**
+
+```
+依赖：T063（消息气泡可用），T049（IMService 可用），T062（会话列表可用）
+起点：消息气泡控件就绪，IM 收发可用
+产出：client/src/gui/views/chat_view.h/cpp
+验收：
+  □ 点击会话列表中的会话 → 内容区切换为聊天视图
+  □ 消息列表显示历史消息气泡（从 SQLite 加载最近 50 条）
+  □ 底部输入框 + 发送按钮
+  □ 输入文本 → 回车或点击发送 → 消息气泡出现 + 发送中状态
+  □ 收到新消息 → 自动追加到列表底部 + 滚动到底
+  □ 收到已读回执 → 消息状态更新为"已读"
+```
+
+---
+
+**T065 — 联系人树（2h）**
+
+```
+依赖：T035（部门树 API 可用），T055（联系人缓存可用），T060（导航可用）
+起点：联系人数据可用
+产出：client/src/gui/views/contact_tree.h/cpp
+验收：
+  □ QTreeView 展示部门→人员树形结构
+  □ 点击部门节点展开/折叠
+  □ 顶部搜索框 → 输入关键词 → 过滤树中匹配的人员
+  □ 搜索结果高亮显示
+  □ 点击人员 → 日志输出 "Contact selected: id=xxx"
+```
+
+---
+
+**T066 — 联系人详情 → 发起单聊（1.5h）**
+
+```
+依赖：T065（联系人树可用），T064（聊天视图可用）
+起点：联系人可选，聊天视图就绪
+产出：修改 contact_tree.h/cpp（增加双击处理）
+验收：
+  □ 双击联系人 → 创建/切换到该联系人的单聊会话
+  □ 会话不存在时自动创建（调 REST API + 本地插入）
+  □ 切换到聊天视图，显示该会话的消息历史
+```
+
+---
+
+**T067 — 任务列表视图（2h）**
+
+```
+依赖：T051（TaskService 可用），T060（导航可用）
+起点：任务数据可用
+产出：client/src/gui/views/task_list.h/cpp
+验收：
+  □ QTableView 展示任务列表
+  □ 列：标题、发起人、优先级、时间、状态
+  □ 顶部筛选栏：待处理 / 已处理 / 我发起的
+  □ 点击某任务 → 日志输出 "Task selected: id=xxx"
+```
+
+---
+
+**T068 — 任务处理对话框（1.5h）**
+
+```
+依赖：T067（任务列表可用）
+起点：任务可展示
+产出：client/src/gui/widgets/task_dialog.h/cpp
+验收：
+  □ 双击任务列表中的任务 → 弹出处理对话框
+  □ 显示任务详情（标题、正文、发起人、时间）
+  □ "通过"按钮 → 调 REST API → 关闭对话框 → 任务状态变为"已处理"
+  □ "驳回"按钮 → 同上
+  □ 操作结果日志输出
+```
+
+---
+
+**T069 — 文件传输面板（2h）**
+
+```
+依赖：T050（FileService 可用），T060（导航可用）
+起点：文件传输逻辑可用
+产出：client/src/gui/views/file_panel.h/cpp
+验收：
+  □ QTableView 展示传输任务列表
+  □ 列：文件名、大小、进度条、速度、状态
+  □ 支持"添加文件"按钮 → 打开文件选择对话框 → 开始上传
+  □ 上传/下载进度实时更新
+```
+
+---
+
+**T070 — 传输速度曲线（1.5h）**
+
+```
+依赖：T069（文件面板可用）
+起点：文件面板可显示传输任务
+产出：client/src/gui/widgets/speed_chart.h/cpp
+验收：
+  □ QChartView 实时绘制传输速度曲线（KB/s）
+  □ 多条传输任务各自一条曲线，颜色不同
+  □ X 轴为时间（最近 60 秒），自动滚动
+  □ 鼠标悬停显示数值
+```
+
+---
+
+**T071 — 设置窗口（1.5h）**
+
+```
+依赖：T004（配置可用），T046（偏好 API 可用），T060（导航可用）
+起点：配置和偏好可读写
+产出：client/src/gui/views/settings_window.h/cpp
+验收：
+  □ 通用设置：语言、主题（亮/暗切换预览）
+  □ 网络设置：服务器地址、端口、TLS 开关
+  □ 通知设置：桌面通知开关、声音开关
+  □ 修改后点击保存 → 写入本地 config + 同步服务端偏好 API
+```
+
+---
+
+**T072 — 系统托盘（1.5h）**
+
+```
+依赖：T023（未读计数可用），T064（聊天可用）
+起点：IM 功能完整，未读计数可用
+产出：修改 main_window.h/cpp（增加 QSystemTrayIcon）
+验收：
+  □ 最小化到托盘而不是关闭
+  □ 托盘图标显示未读消息数角标（数字或红点）
+  □ 新消息到达时托盘图标闪烁
+  □ 右键菜单：显示主窗口 / 退出
+  □ 双击托盘图标恢复主窗口
+```
+
+---
+
+**T073 — Toast 通知弹窗（1.5h）**
+
+```
+依赖：T064（聊天可用），T072（托盘可用）
+起点：消息接收可用
+产出：client/src/gui/widgets/toast_notify.h/cpp
+验收：
+  □ 新消息到达且主窗口不在前台 → 右上角弹出 Toast
+  □ Toast 显示发送者头像（占位）、名称、消息预览
+  □ 3 秒后自动消失，带滑出动画
   □ 点击 Toast → 打开对应会话
-  □ 平台适配：Win 用原生 Toast API（可选），Linux 用 D-Bus Notifications（可选）
 ```
 
 ---
 
-**T076 — 数据统计面板（1.5h）**
+**T074 — @提及高亮和提醒（1h）**
 
 ```
-依赖：T059
-产出：client/src/gui/views/dashboard_view.h/.cpp
+依赖：T064（聊天可用），T073（Toast 可用）
+起点：聊天和通知可用
+产出：修改 chat_view 和 toast_notify
 验收：
-  □ 日期范围选择器（本周/本月/自定义）
-  □ 消息量趋势曲线（QChartView + QLineSeries）
-  □ 活跃时段热力图（简化版：按小时柱状图）
-  □ 传输量统计（上传/下载柱状图）  
-  □ 数据来源：ReportService
+  □ 收到含 @当前用户名 的消息 → 消息气泡高亮（黄色边框）
+  □ 群聊免打扰模式下，@我的消息仍触发 Toast 通知
+  □ 会话列表中 @我的会话显示 [有人@我] 标记
 ```
 
 ---
 
-**T077 — 导航切换 + 全局状态集成（2h）**
+**T075 — GUI 集成走查（3h）**
 
 ```
-依赖：T065, T068, T070, T072, T073, T074, T076
-产出：client/src/gui/main_window.cpp（更新）
+依赖：T059–T074
 验收：
-  □ 点击导航栏图标 → QStackedWidget 切换对应视图
-  □ 未读消息总数显示在导航栏"消息"图标上
-  □ 待处理任务数显示在"任务"图标上
-  □ 正在传输的文件数显示在"文件"图标上
-  □ 快捷键：Ctrl+1~5 切换视图，Ctrl+F 搜索
+  □ 走查完整交互流：
+    启动→登录窗口→输入账号密码→登录成功→主窗口→
+    会话列表→选会话→发消息→收到回复→气泡状态变化→
+    切到联系人→搜索人员→双击发起单聊→
+    切到任务→查看任务→处理任务→
+    切到文件→上传文件→看进度→
+    最小化到托盘→新消息→托盘闪烁+Toast→
+    双击托盘→恢复窗口→切到设置→改主题→保存→
+    关闭→退出
+  □ 无崩溃路径
+  □ 内存无持续增长（24 小时运行观察）
+  □ bug 修复 + DEVLOG 补全
 ```
 
 ---
 
-**T078 — GUI 全流程走查 + 打磨（3h）**
+**T076 — 跨平台编译验证（2h）**
+
+```
+依赖：T075（GUI 走查通过）
+起点：Windows 上功能完整
+验收：
+  □ 在 Linux（Ubuntu 22.04+）上 cmake --preset release 编译通过
+  □ 启动后主窗口正常显示
+  □ 基本收发消息可用
+  □ Linux 平台差异问题记录到 DEVLOG
+```
+
+---
+
+## Phase 6：集成联调 + 发布（T077–T084）
+
+> 出口：可打包分发的 v1.0 版本。
+
+---
+
+**T077 — 客户端 + 后端全链路压力测试（2h）**
+
+```
+依赖：T075（客户端 OK），T047（后端 OK）
+起点：两端独立测试通过
+验收：
+  □ 5 个客户端同时在线，每个每秒发 10 条消息，持续 5 分钟
+  □ 消息到达率 ≥ 99%
+  □ 服务端内存无泄漏
+  □ 延迟 p99 < 500ms
+```
+
+---
+
+**T078 — 24 小时稳定性测试（1h）**
 
 ```
 依赖：T077
-产出：无新文件（修复 + 打磨）
 验收：
-  □ 登录→会话列表→发消息→收消息→已读→撤回→编辑 全流程无崩溃
-  □ 文件上传→进度显示→下载→SHA-256 校验 全流程
-  □ 任务推送→列表→处理→状态更新 全流程
-  □ 断网→重连→离线消息同步→未读计数恢复 全流程
-  □ 窗口缩放/最大化/最小化 无布局错乱
-  □ 内存：空闲 <150MB，加载 10 万条消息 <500MB
+  □ 客户端 + 服务端同时运行 24 小时
+  □ 每小时自动发送一条心跳消息
+  □ 内存使用稳定（无持续增长）
+  □ 数据库文件大小不异常膨胀
 ```
 
 ---
 
-## Phase 6：集成联调 + 跨平台打包（T079–T093）
-
-> 出口标准：Windows + Linux 双平台可编译打包，v1.0 可发布。
-
----
-
-**T079 — 全验收场景逐条走查（3h）**
+**T079 — 异常场景测试（2h）**
 
 ```
-依赖：T078, T052
-产出：无新文件
+依赖：T077
 验收：
-  □ AC-01：两个客户端互发文本消息，500ms 内收到，状态正确流转
-  □ AC-02：飞行模式下发消息 → 恢复网络 → 自动重发成功，无重复
-  □ AC-03：上传 500MB 文件 → 中途断网 → 恢复后断点续传 → SHA-256 校验通过
-  □ AC-04：24h 持续收发消息 → 内存无泄漏（TODO：实际可能只做 1h 压测）
-  □ AC-05：同时对 10 个会话发送 → GUI 无卡顿
-  □ AC-06：Windows + Linux 分别编译运行
+  □ 拔网线 30 秒 → 客户端检测断开 → 自动重连 → 补拉消息
+  □ 服务端崩溃重启 → 客户端重连 → 恢复正常
+  □ 客户端崩溃重启 → 恢复未发送的消息 → 未完成的文件传输续传
+  □ 发送超大文件（2GB） → 分块传输 → SHA-256 校验通过
+  □ 发送消息后立即断网 → 重连后消息发出 → 不重复
 ```
 
 ---
 
-**T080 — Bug 修复 + 缓冲（5h）**
+**T080 — 端到端测试脚本（2h）**
 
 ```
-依赖：T079
-产出：按需
+依赖：T079（异常场景手动验证通过）
+产出：tests/e2e/test_basic_chat.py（或 Go test）
 验收：
-  □ T079 走查中发现的 bug 全部修复
-  □ 无已知崩溃路径
+  □ 脚本自动启动 Mock/真实服务端
+  □ 自动启动 2 个客户端进程（headless 模式或 CLI 模式）
+  □ 自动执行：登录 → 收发消息 → 验证 DB → 断连 → 重连 → 补拉
+  □ CI 可运行（cmake --preset ci-debug && ctest）
 ```
 
 ---
 
-**T081 — Windows 打包（3h）**
+**T081 — 文档终审（1.5h）**
 
 ```
-依赖：T080
-产出：dist/yunrong-setup.exe 或 .zip
+依赖：全部任务
 验收：
-  □ windeployqt 自动收集 Qt DLL
-  □ 依赖 DLL 完整（Qt6 + OpenSSL + SQLite + VC Runtime）
-  □ 安装包可在未装 Qt 的 Windows 10 上启动
-  □ 打包脚本：scripts/package_win.bat
+  □ 每份设计文档末尾修订记录补全到 v0.3
+  □ 接口文档与实际 API 一致（逐条核对）
+  □ README 更新快速开始步骤（可直接复制粘贴运行）
+  □ DEVLOG 全 Phase 补全
 ```
 
 ---
 
-**T082 — Linux 打包（3h）**
+**T082 — Windows 打包（2h）**
 
 ```
-依赖：T080
-产出：dist/YunRong-0.1.0-x86_64.AppImage
+依赖：T080（测试通过）
+起点：Release 构建可用
+产出：packages/yunrong-1.0.0-win64.exe
+验收：
+  □ windeployqt 收集 Qt DLL
+  □ NSIS/Inno Setup 生成安装包
+  □ 在纯净 Windows 10 虚拟机上安装 → 启动 → 登录 → 收发消息
+```
+
+---
+
+**T083 — Linux 打包（1.5h）**
+
+```
+依赖：T076（Linux 编译通过）
+起点：Linux 上 Release 构建可用
+产出：packages/yunrong-1.0.0-x86_64.AppImage
 验收：
   □ linuxdeployqt 生成 AppImage
-  □ 在未装 Qt 的 Ubuntu 20.04 上可启动
-  □ 打包脚本：scripts/package_linux.sh
+  □ 在 Ubuntu 22.04 上双击运行 → 登录 → 收发消息
 ```
 
 ---
 
-**T083 — CHANGELOG + 发布文档（1h）**
+**T084 — v1.0 发布（1h）**
 
 ```
-依赖：T081, T082
-产出：CHANGELOG.md
+依赖：T081, T082, T083
+产出：Git tag v1.0 + Gitee Release 页面
 验收：
-  □ 记录 v1.0 新增功能
-  □ 已知问题列表
-  □ 部署说明（指向 09-部署与运维文档）
+  □ dev → main 合并
+  □ git tag v1.0 + git push --tags
+  □ Gitee Release 上传 Windows 安装包 + Linux AppImage
+  □ CHANGELOG.md 列出 v1.0 功能清单
 ```
 
 ---
 
-**T084 — v1.0 发布（0.5h）**
+## 任务统计
 
-```
-依赖：T083
-产出：git tag v1.0
-验收：
-  □ dev → main squash merge
-  □ git tag -a v1.0 -m "首次正式发布"
-  □ Gitee Release 页面添加 CHANGELOG + 安装包附件
-```
+| Phase     | 任务数    | 预估总工时    |
+|:---------:|:------:|:--------:|
+| 1 — 工程骨架  | 12     | 20h      |
+| 2 — 客户端核心 | 18     | 32h      |
+| 3 — Go 后端 | 18     | 28h      |
+| 4 — 业务收敛  | 10     | 14h      |
+| 5 — GUI   | 18     | 33h      |
+| 6 — 集成发布  | 8      | 13h      |
+| **合计**    | **84** | **140h** |
+
+预估 140 小时 ÷ 每周 20 小时 = **7 周**。含缓冲约 **8–9 周**。
 
 ---
 
-## 附录 A：任务统计
+## 验收原则
 
-| Phase  | 任务数    | 预估总工时     | 周数     |
-|:------:|:------:|:---------:|:------:|
-| 1      | 20     | 30h       | 2      |
-| 2      | 22     | 45h       | 6      |
-| 3      | 10     | 21h       | 4      |
-| 4      | 8      | 16h       | 4      |
-| 5      | 18     | 32h       | 7      |
-| 6      | 6      | 15h       | 2      |
-| **合计** | **84** | **~160h** | **25** |
-
-## 附录 B：任务编号速查
-
-```
-Phase 1: T001–T020   工程骨架 + Mock Server
-Phase 2: T021–T042   客户端核心层
-Phase 3: T043–T052   Go 后端骨架  
-Phase 4: T053–T060   业务逻辑层
-Phase 5: T061–T078   GUI
-Phase 6: T079–T084   集成联调 + 打包
-```
+1. 每个验收条件必须可被客观判定——看到什么输出、运行什么命令、检查什么结果
+2. 不检查本任务不涉及的功能
+3. 依赖项未就绪时不启动任务——先完成依赖，再做本体
+4. 任务执行中发现设计问题时，先修正设计文档再继续编码

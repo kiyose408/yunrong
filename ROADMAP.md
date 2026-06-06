@@ -1,0 +1,249 @@
+# 开发进度规划
+
+> 单人开发，每天 3–4 小时（~20 小时/周）。总预估：**24–28 周**（6–7 个月）。
+
+---
+
+## 里程碑总览
+
+```
+Phase 1          Phase 2           Phase 3          Phase 4         Phase 5           Phase 6
+工程骨架         客户端核心层        后端骨架          业务逻辑层       GUI               集成联调
+[2 周]           [6 周]            [4 周]            [4 周]          [7 周]            [2 周]
+   │                │                 │                │               │                 │
+   └── 骨架可编译 ──┴── 网络层可跑 ──┴── 前后端对接 ──┴── 三大业务闭环 ──┴── 完整客户端 ──┴── 可发布
+```
+
+---
+
+## Phase 1：工程骨架 + Mock Server（第 1–2 周）
+
+> **目标**：两个项目骨架可编译、Mock Server 可模拟基础聊天场景。
+
+### 第 1 周：C++ 客户端骨架
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| CMake 顶级项目 + FetchContent（nlohmann, spdlog） | 1h | `cmake --preset debug` 通过 |
+| `client/src/core/` 目录 + CMakeLists 子项目（net/data/model/service/infra 空壳） | 2h | 静态库 `yunrong_core` 可编译 |
+| `client/src/gui/` + `client/src/app/main.cpp` 空窗口 | 2h | `QApplication` 启动空白窗口 |
+| `client/src/core/infra/logger.cpp` + `config_mgr.cpp` 最小实现 | 2h | 日志输出到控制台 + 文件，JSON 配置加载 |
+| Qt Creator / VSCode 调试配置 | 1h | F5 可断点 |
+
+### 第 2 周：Go 后端骨架 + Mock Server
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| Go 模块初始化 + Gin 路由 + 空 handler | 2h | `go run ./cmd/server` 启动，`/api/v1/health` 返回 200 |
+| PostgreSQL 连接池 + 自动迁移（读 `migrations/*.sql`） | 3h | 启动时自动建表 |
+| Mock Server：HTTP 模拟登录 + 联系人列表 | 3h | 客户端可调 Mock Server 拿假数据 |
+| Mock Server：WebSocket 模拟消息收发 | 3h | 两个客户端实例通过 Mock 互发消息 |
+| `.gitignore` + `ENGINEERING.md` + 首次 CI（Gitee CI 或 GitHub Actions） | 1h | push 自动编译检查 |
+
+**Phase 1 出口**：客户端编译通过 + Mock Server 可跑 + CI 就绪。
+
+---
+
+## Phase 2：客户端核心层（第 3–8 周）
+
+> **目标**：网络层、数据层、基础设施三大核心模块全部实现并通过单元测试。
+
+### 第 3–4 周：Protocol + WebSocket 客户端
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `protocol.cpp`：JSON 帧编解码（msg/ack/notify/heartbeat/sync） | 4h | 双向编解码 + 单元测试 |
+| `protocol.cpp`：二进制帧编解码（缩略图） | 2h | 编解码 + 单元测试 |
+| `ws_client.cpp`：基于 QWebSocket 的连接/断开/收发 | 6h | 可连 Mock Server，收发 JSON 帧 |
+| `heartbeat.cpp`：QTimer 驱动的 Ping/Pong 检测 | 3h | 30s 间隔 + 90s 超时触发回调 |
+| 网络层单元测试（Mock Server 注入） | 3h | Protocol + WS 全路径覆盖 |
+
+### 第 5 周：HTTP 客户端 + ConnectionManager
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `http_client.cpp`：QNetworkAccessManager 封装（GET/POST/multipart） | 4h | Token 注入、超时、重试 |
+| `connection_mgr.cpp`：Facade 模式，统一 WS + HTTP 入口 | 4h | `sendMessage()` / `uploadFile()` 统一接口 |
+| `reconnect_strategy.cpp`：指数退避状态机 | 3h | IDLE→CONNECTING→CONNECTED→RECONNECTING→ERROR |
+| `rate_limiter.cpp`：令牌桶限速 | 2h | 可配置 rate，单元测试 |
+
+### 第 6 周：数据层
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `sqlite_store.cpp`：SQLite 初始化（WAL 模式）+ 建表 | 3h | 启动自动建表 |
+| `sqlite_store.cpp`：消息 CRUD + 会话 CRUD + 全文搜索 | 5h | DAO 接口 + 单元测试 |
+| `cache_mgr.cpp`：内存缓存（最近 50 会话摘要 + 在线状态） | 3h | LRU 淘汰 |
+| `sync_mgr.cpp`：增量同步引擎骨架（C→S sync 帧 + S→C sync_data 处理） | 3h | 可拉 Mock Server 的增量数据 |
+
+### 第 7 周：基础设施 + 数据模型
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `thread_pool.cpp`：固定大小线程池 + 任务队列 | 3h | 可投递 `std::function` |
+| `msg_bus.cpp`：线程安全队列（`std::queue` + `std::mutex`） | 2h | 多生产者单消费者 |
+| `crypto.cpp`：AES 加解密 + SHA-256 哈希 | 2h | 文件校验 + 本地 DB 加密 |
+| `model/` 全部：Message/Conversation/Contact/Task/FileTransfer 数据结构 | 2h | 纯头文件结构体，跨层共享 |
+
+### 第 8 周：核心层集成 + 缓冲
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| 核心层全模块联调：WS 连 Mock → 收发消息 → SQLite 落库 → 同步 | 8h | 端到端数据流打通 |
+| 补充单元测试 + 修复 bug | 4h | 核心模块覆盖率 ≥ 70% |
+
+**Phase 2 出口**：`yunrong_core` 库完整可用，网络/数据/基础设施全部通过测试。
+
+---
+
+## Phase 3：Go 后端骨架（第 9–12 周）
+
+> **目标**：后端 REST API + WebSocket Hub + PostgreSQL 全部就位。
+
+### 第 9 周：认证 + 用户
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `auth.go`：JWT 签发 + 验证 + Refresh Token 续期 | 6h | 登录/刷新/登出 API |
+| `authMiddleware`：所有 protected 路由验 Token | 2h | 中间件就位 |
+| `contacts.go`：联系人列表 + 搜索 | 3h | 分页 + 搜索 |
+
+### 第 10 周：消息 + 会话
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `hub.go`：完善——按 convID → userID 二级路由（非全量广播） | 4h | 消息精准投递 |
+| `conversations.go`：会话 CRUD + 消息拉取 + 搜索 | 5h | 游标分页 |
+| WebSocket `readPump`：消息帧解析 + ACK + 存储 + 路由 | 4h | 收发闭环 |
+
+### 第 11 周：文件 + 任务
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `files.go`：分块上传 + 秒传检查 + Range 下载 | 6h | 断点续传就位 |
+| `tasks.go`：任务推送 + 处理 + 列表 | 4h | 审批通过/驳回 |
+
+### 第 12 周：后端集成测试 + 缓冲
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| 全 API 集成测试（Postman 或 Go test） | 6h | 所有端点覆盖 |
+| 客户端 + 后端首次对接（登录 → WS 连 → 收发消息） | 6h | 前后端打通 |
+
+**Phase 3 出口**：客户端 + Go 后端完整消息流打通。
+
+---
+
+## Phase 4：业务逻辑层（第 13–16 周）
+
+> **目标**：IM / 任务 / 文件三大服务完整实现。
+
+### 第 13–14 周：IM 服务
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `im_service.cpp`：消息路由（发送/接收/ACK/重传） | 6h | 发送→ACK→状态更新闭环 |
+| `im_service.cpp`：会话管理（创建/列表/未读计数/已读标记） | 5h | 会话列表实时排序 |
+| `im_service.cpp`：离线队列 + 消息撤回 + 编辑 | 4h | revoke/edit 帧处理 |
+| IM 集成测试 | 3h | Mock Server 场景覆盖 |
+
+### 第 15 周：文件 + 任务服务
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `file_service.cpp`：上传编排 + 断点续传 + 进度回调 | 6h | 暂停/恢复/取消 |
+| `task_service.cpp`：任务列表 + 处理操作 + 本地缓存 | 4h | 状态分类展示 |
+| 集成测试 | 2h | — |
+
+### 第 16 周：同步 + 报表 + 缓冲
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `sync_mgr.cpp` 完善：冲突检测 + 增量同步 | 4h | LWW 策略 |
+| `report_service.cpp`：消息量统计 + 传输量统计（骨架） | 3h | 数据聚合逻辑 |
+| 缓冲 + Bug 修复 | 5h | — |
+
+**Phase 4 出口**：三大业务线（IM/文件/任务）全部闭环。
+
+---
+
+## Phase 5：GUI（第 17–23 周）
+
+> **目标**：完整桌面客户端，所有界面可交互。
+
+### 第 17–18 周：主窗口框架 + 登录
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `main_window.cpp`：三栏布局（导航 + 内容 + 信息面板） | 6h | 可切换视图 |
+| 登录窗口：QLineEdit + "记住密码" + Token 自动登录 | 4h | 登录→主窗口切换 |
+| 全局样式（QSS 主题基础） | 3h | 一致的配色和字体 |
+
+### 第 19–20 周：聊天界面
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `conversation_list`：QListView + Delegate（未读角标、消息预览） | 5h | 实时排序 |
+| `message_bubble`：自定义 Delegate（自适应高度、文本/图片/文件卡片） | 8h | 选中/复制/右键菜单 |
+| `chat_view`：消息列表 + 输入框 + 发送按钮 | 5h | 回车发送、滚动到底部 |
+
+### 第 21 周：联系人 + 任务
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `contact_tree`：QTreeView + 懒加载 + 搜索 | 6h | 组织架构树 |
+| `task_list`：QTableView + 状态筛选 | 4h | 待处理/已处理/我发起的 |
+
+### 第 22 周：文件面板 + 设置 + 托盘
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| `file_panel`：QTableView + QProgressBar + QChartView 速度曲线 | 6h | 实时进度 |
+| 设置窗口：偏好配置 | 2h | 主题/通知/网络设置 |
+| 系统托盘：QSystemTrayIcon + 未读角标 + Toast 通知 | 4h | 后台消息提醒 |
+
+### 第 23 周：GUI 打磨 + 缓冲
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| 自定义控件收尾（头像、状态指示灯、速度曲线） | 4h | 全部控件就位 |
+| 全界面交互测试 + Bug 修复 | 8h | 无崩溃路径 |
+
+**Phase 5 出口**：桌面客户端功能完整，可日常使用。
+
+---
+
+## Phase 6：集成联调 + 打包（第 24–25 周）
+
+> **目标**：可跨平台编译、可打包分发的版本。
+
+### 第 24 周：端到端测试 + 修复
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| 全场景走查：登录→IM→文件→任务→离线→重连→多端 | 10h | 验收标准 AC-01 ~ AC-06 全部通过 |
+| Bug 修复 | 5h | — |
+
+### 第 25 周：跨平台打包
+
+| 任务 | 工时 | 产出 |
+|---|---|---|
+| Windows 打包（windeployqt + NSIS/Inno Setup） | 4h | `.exe` 安装包 |
+| Linux 打包（linuxdeployqt + AppImage） | 4h | `.AppImage` |
+| 发布文档 + CHANGELOG | 2h | — |
+
+**Phase 6 出口**：`v1.0` 发布。
+
+---
+
+## 风险与缓冲
+
+| 风险 | 概率 | 缓解 |
+|---|---|---|
+| Qt/C++ 编译环境问题（Windows 尤其） | 高 | Phase 1 就解决，CI 每日编译 |
+| 协议设计反复调整 | 中 | Phase 0 冻结后只增不改 |
+| GUI 自定义控件耗时超预期 | 高 | Phase 5 预留 7 周，砍非核心控件 |
+| 单人 bug 修复阻塞 | 中 | 每个 Phase 末尾都有缓冲周 |
+| 体力/动力波动 | 中 | 每周 3-4 天即可，不要求每天 |
+
+**总缓冲**：6 个 Phase 各含 0.5–1 周缓冲，累计约 5 周弹性空间。

@@ -1,57 +1,60 @@
 # 开发日志
 
-> 记录每项任务的完成状态、遇到的问题及解决方案。按 Phase 分组，按 T 编号排序。
+> 每项任务完成后记录：状态、工时、产出、遇到的问题及解决方案。
 
 ---
 
 ## Phase 1：工程骨架 + Mock Server
 
-### T001 — CMake 顶层项目结构
+### T001 — CMake 项目能 configure ✅
 
-| 项目 | 内容 |
-|---|---|
-| **日期** | 2025-07 |
-| **状态** | ✅ 完成 |
-| **工时** | 1h |
-| **产出** | `client/CMakeLists.txt` `client/CMakePresets.json` `client/cmake/Platform.cmake` |
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 1h |
 
-**问题记录**
+**产出**：`client/CMakeLists.txt` `client/CMakePresets.json` `client/cmake/Platform.cmake`
 
 | # | 问题 | 原因 | 解决 |
 |---|---|---|---|
-| 1 | `cmake --preset debug` 报 `CMAKE_MAKE_PROGRAM is not set` | `generator: "Ninja"` 但沙箱环境未安装 Ninja | 去掉 preset 中的 `generator` 字段，让 CMake 自动选择默认生成器（Windows 下自动选 Visual Studio） |
-| 2 | FetchContent `nlohmann_json` clone 失败 `Failed to connect to github.com port 443` | 国内网络无法直连 GitHub | 切换为 Gitee 镜像 `https://gitee.com/mirrors/nlohmann-json.git` |
-| 3 | FetchContent `spdlog` clone 失败 `404 not found` | Gitee 公共镜像 `mirrors/spdlog` 不存在 | 用户自行 fork 到 `https://gitee.com/kiyose408/spdlog.git`，更新 `GIT_REPOSITORY` |
+| 1 | `CMAKE_MAKE_PROGRAM is not set` | preset 指定 `"Ninja"`，环境无 Ninja | 去掉 `generator` 字段，CMake 自动选 Visual Studio |
+| 2 | FetchContent 无法 clone GitHub | 国内网络不通 | nlohmann_json → Gitee 镜像，spdlog → 用户 fork |
+| 3 | spdlog Gitee 公共镜像 404 | `mirrors/spdlog` 不存在 | 改用 `https://gitee.com/kiyose408/spdlog.git` |
 
 ---
 
-### T002 — 核心库 CMake 骨架
+### T002 — 空白窗口可启动 ✅
 
-| 项目 | 内容 |
-|---|---|
-| **日期** | — |
-| **状态** | ⬜ 待开始 |
-| **工时** | 0.5h |
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 1h |
 
-**问题记录**
+**产出**：`client/src/app/main.cpp` `client/src/app/CMakeLists.txt` `client/CMakeLists.txt`
 
 | # | 问题 | 原因 | 解决 |
 |---|---|---|---|
+| — | 无 | — | — |
+
+**验收记录**：Qt Creator 编译通过，启动显示标题栏 "Yunrong" 的空白窗口，关闭正常退出。
 
 ---
 
-### T003 — GUI + App CMake 骨架
+### T003 — 日志可以输出到文件和控制台
 
-| 项目 | 内容 |
-|---|---|
-| **日期** | — |
-| **状态** | ⬜ 待开始 |
-| **工时** | 0.5h |
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| — | ⬜ 待开始 | 1h |
 
-**问题记录**
+---
 
-| # | 问题 | 原因 | 解决 |
-|---|---|---|---|
+### T004 — 配置可以从 JSON 文件加载
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| — | ⬜ 待开始 | 1.5h |
+
+---
+
+（后续 Phase 1 任务按实际进展逐项追加）
 
 ---
 
@@ -61,7 +64,7 @@
 
 ---
 
-## Phase 3：Go 后端骨架
+## Phase 3：Go 后端
 
 （待启用）
 

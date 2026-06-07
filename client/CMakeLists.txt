@@ -36,6 +36,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
-# ===== 子目录（后续任务逐步添加）=====
-# T002: add_subdirectory(src/app)
+# ===== 子目录 =====
+add_subdirectory(src/app)
 # T013: add_subdirectory(src/core)

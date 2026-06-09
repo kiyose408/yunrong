@@ -86,6 +86,22 @@
 
 ---
 
+---
+
+### T005 — WebSocket 能连接和断开 ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 1h |
+
+**产出**：`client/src/app/ws_client.h` `client/src/app/ws_client.cpp`
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| 1 | 6 个 `LNK2001` 未解析符号 | Qt MOC 未处理 `ws_client.h` 中的 `Q_OBJECT` 宏 | 顶层 `CMakeLists.txt` 显式开启 `CMAKE_AUTOMOC ON`；`ws_client.h` 加入 `add_executable` 源列表 |
+
+**验收记录**：Mock Server 未建，连接 `ws://127.0.0.1:8080/ws` 失败，日志输出 `WebSocket error: "Invalid socket descriptor"`，程序正常退出不崩溃。
+
 （后续 Phase 1 任务按实际进展逐项追加）
 
 ---

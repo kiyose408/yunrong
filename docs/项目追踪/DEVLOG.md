@@ -65,11 +65,24 @@
 
 ---
 
-### T004 — 配置可以从 JSON 文件加载
+### T004 — 配置可以从 JSON 文件加载 ✅
 
 | 日期 | 状态 | 工时 |
 |------|:----:|------|
-| — | ⬜ 待开始 | 1.5h |
+| 2025-07 | ✅ 完成 | 1.5h |
+
+**产出**：`client/config/default.json` `client/src/app/config_mgr.h` `client/src/app/config_mgr.cpp`
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| 1 | 配置文件找不到 | exe 在 build 深层目录，相对路径 `config/default.json` 无法定位 | `applicationDirPath() + "/../../../../config/default.json"` 回溯到项目根 |
+| 2 | `configure_file` + generator expression 失败 | `$<TARGET_FILE_DIR>` 不与 `configure_file` 兼容 | 放弃 CMake 复制方案，改为代码中相对路径回溯 |
+| 3 | `qInfo("str")` vs `qInfo() << "str"` 混淆 | 前者是 printf 风格，后者是流式，`LOG_INFO("str")` 宏展开后不能接 `<<` | 统一使用 `LOG_INFO() << "msg"` 流式写法 |
+
+**实现要点**：
+- `ConfigManager` 使用 nlohmann/json 的 JSON Pointer 风格路径取值（`/server/host`）
+- 通过 `QString::split('/')` 逐级遍历 JSON 树，任意层级缺失时返回 fallback
+- `default.json` 不存在时不崩溃，使用硬编码默认值并输出 WARN 日志
 
 ---
 

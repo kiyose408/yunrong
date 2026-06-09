@@ -5,6 +5,7 @@
 #include <QDir>
 #include "logger.h"
 #include "config_mgr.h"
+#include "ws_client.h"
 
 int main(int argc, char* argv[])
 {
@@ -16,8 +17,7 @@ int main(int argc, char* argv[])
     Logger::instance().init(logPath);
     LOG_INFO() << "Yunrong starting...";
 
-    // 配置：从 build 目录向上回溯 4 级到项目根 config/
-    // exe 在 build/Desktop_.../src/app/ → ../../../../config/default.json
+    // 配置
     ConfigManager cfg;
     QString configPath = QApplication::applicationDirPath()
                          + "/../../../../config/default.json";
@@ -25,6 +25,11 @@ int main(int argc, char* argv[])
 
     LOG_INFO() << "Server:" << cfg.serverHost() << ":" << cfg.serverPort()
                << "(TLS:" << (cfg.serverTls() ? "on" : "off") << ")";
+
+    // WebSocket 连接（Mock Server 未建，预期连接失败）
+    QString wsUrl = QString("ws://%1:%2/ws").arg(cfg.serverHost()).arg(cfg.serverPort());
+    WsClient wsClient;
+    wsClient.open(QUrl(wsUrl));
 
     QWidget window;
     window.setWindowTitle("YunRong");

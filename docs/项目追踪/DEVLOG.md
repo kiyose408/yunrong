@@ -164,6 +164,22 @@
 
 **验证方式**：`go run ./cmd/server` → 另开终端 `curl http://localhost:8080/health` → `{"status":"ok"}`，Ctrl+C 正常退出。
 
+---
+
+### T010 — Mock Server 用户登录 ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 1h |
+
+**产出**：`server/cmd/server/main.go`（增加 `loginHandler` / `makeJWT` 标准库手写 JWT）
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| — | 无 | — | — |
+
+**验证结果**：`admin/123456` → 200 + valid JWT；`admin/wrong` → 401。JWT 可用 jwt.io 解码验证。
+
 （后续 Phase 1 任务按实际进展逐项追加）
 
 ---

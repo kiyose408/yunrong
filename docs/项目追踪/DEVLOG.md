@@ -196,7 +196,34 @@
 
 **验证结果**：浏览器 `new WebSocket("ws://localhost:8080/ws")` → ping→pong、任意 JSON→echo。客户端断开时服务端日志输出 `ws client disconnected`。
 
-（后续 Phase 1 任务按实际进展逐项追加）
+---
+
+### T012 — Mock Server 单聊消息转发 ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 1.5h |
+
+**产出**：`server/cmd/server/main.go`（增加 `Hub` / `Client` / `parseTokenUserID` / `sendToUser`）
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| 1 | 端口被旧进程占用 `bind: already in use` | 前一任务启动的 go run 未退出 | `netstat -ano | findstr 8080` 找到 PID 后 `taskkill` |
+| 2 | 消息走了 default echo 而非 msg 路由 | 浏览器标签页混用了不同 token 的旧连接 | 重启服务器 + 两个全新标签页分别用 admin/zhangsan token 重连 |
+
+**验证结果**：admin (1001) 发 `{"type":"msg","to":1002,"body":"hello"}` → zhangsan (1002) 收到 `{"type":"msg","from":1001,"body":"hello"}`。服务端日志：`msg routed: 1001 → 1002`。
+
+---
+
+## 🎉 Phase 1 完成
+
+| T# | 模块 | 能力 |
+|:--:|------|------|
+| T001–T004 | 客户端骨架 | CMake + 空白窗口 + 日志 + 配置 |
+| T005–T008 | WebSocket | 连接/断开 + JSON 收发 + 30s 心跳 + 指数退避重连 |
+| T009–T012 | Mock Server | /health + JWT 登录 + WS 回声 + Hub 单聊路由 |
+
+**Phase 1 出口**：客户端 + Mock Server 均已可编译运行，WS 单聊消息流走通。
 
 ---
 

@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QWebSocket>
+#include <QJsonObject>
 #include <QUrl>
 
 class WsClient : public QObject
@@ -15,15 +16,18 @@ public:
 
     void open(const QUrl& url);
     void close();
+    void sendJson(const QJsonObject& obj);
 
 signals:
     void connected();
     void disconnected();
+    void messageReceived(const QJsonObject& msg);
 
 private slots:
     void onConnected();
     void onDisconnected();
     void onError(QAbstractSocket::SocketError error);
+    void onTextMessage(const QString& text);
 
 private:
     QWebSocket m_socket;

@@ -2,7 +2,7 @@
 
 #include <QApplication>
 #include <QWidget>
-#include <QDir>
+#include <QJsonObject>
 #include "logger.h"
 #include "config_mgr.h"
 #include "ws_client.h"
@@ -26,10 +26,26 @@ int main(int argc, char* argv[])
     LOG_INFO() << "Server:" << cfg.serverHost() << ":" << cfg.serverPort()
                << "(TLS:" << (cfg.serverTls() ? "on" : "off") << ")";
 
-    // WebSocket 连接（Mock Server 未建，预期连接失败）
+    // WebSocket（Mock Server 未建，预期连接失败）
     QString wsUrl = QString("ws://%1:%2/ws").arg(cfg.serverHost()).arg(cfg.serverPort());
     WsClient wsClient;
+
+    QObject::connect(&wsClient, &WsClient::connected, [&wsClient]() {
+        QJsonObject ping;
+        ping["type"] = "ping";
+        wsClient.sendJson(ping);
+    });
+
+    QObject::connect(&wsClient, &WsClient::messageReceived, [](const QJsonObject& msg) {
+        qInfo() << "Message received - type:" << msg.value("type").toString();
+    });
+
     wsClient.open(QUrl(wsUrl));
+
+    // 尝试发送 ping（无服务端，发不出去但日志会记录发送内容）
+    QJsonObject ping;
+    ping["type"] = QStringLiteral("ping");
+    wsClient.sendJson(ping);
 
     QWidget window;
     window.setWindowTitle("YunRong");

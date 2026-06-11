@@ -30,22 +30,15 @@ int main(int argc, char* argv[])
     QString wsUrl = QString("ws://%1:%2/ws").arg(cfg.serverHost()).arg(cfg.serverPort());
     WsClient wsClient;
 
-    QObject::connect(&wsClient, &WsClient::connected, [&wsClient]() {
-        QJsonObject ping;
-        ping["type"] = "ping";
-        wsClient.sendJson(ping);
-    });
-
     QObject::connect(&wsClient, &WsClient::messageReceived, [](const QJsonObject& msg) {
         qInfo() << "Message received - type:" << msg.value("type").toString();
     });
 
-    wsClient.open(QUrl(wsUrl));
+    QObject::connect(&wsClient, &WsClient::heartbeatTimeout, []() {
+        qWarning() << "Connection lost (heartbeat timeout)";
+    });
 
-    // 尝试发送 ping（无服务端，发不出去但日志会记录发送内容）
-    QJsonObject ping;
-    ping["type"] = QStringLiteral("ping");
-    wsClient.sendJson(ping);
+    wsClient.open(QUrl(wsUrl));
 
     QWidget window;
     window.setWindowTitle("YunRong");

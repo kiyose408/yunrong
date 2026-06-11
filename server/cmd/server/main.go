@@ -14,14 +14,21 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 var jwtSecret = []byte("yunrong-mock-secret")
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
 
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("POST /api/v1/auth/login", loginHandler)
+	mux.HandleFunc("/ws", wsHandler)
 
 	addr := ":8080"
 	log.Printf("Mock Server listening on %s", addr)
@@ -54,15 +61,14 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 硬编码用户表
 	users := map[string]struct {
 		password string
 		userID   int64
 		name     string
 	}{
-		"admin":  {"123456", 1001, "管理员"},
+		"admin":    {"123456", 1001, "管理员"},
 		"zhangsan": {"123456", 1002, "张三"},
-		"lisi":   {"123456", 1003, "李四"},
+		"lisi":     {"123456", 1003, "李四"},
 	}
 
 	u, ok := users[req.Username]
@@ -89,6 +95,45 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			"ws_url":        "ws://localhost:8080/ws",
 		},
 	})
+}
+
+func wsHandler(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("ws upgrade failed: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	log.Printf("ws client connected from %s", r.RemoteAddr)
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("ws client disconnected: %v", err)
+			return
+		}
+
+		var req map[string]any
+		if err := json.Unmarshal(msg, &req); err != nil {
+			log.Printf("ws non-JSON received: %s", string(msg))
+			continue
+		}
+
+		log.Printf("ws received: %s", string(msg))
+
+		// 回声：ping → pong，其他 → echo
+		reqType, _ := req["type"].(string)
+		var resp map[string]any
+		if reqType == "ping" {
+			resp = map[string]any{"type": "pong"}
+		} else {
+			resp = map[string]any{"type": "echo", "payload": req}
+		}
+
+		respBytes, _ := json.Marshal(resp)
+		conn.WriteMessage(websocket.TextMessage, respBytes)
+	}
 }
 
 // ===== JWT（标准库手写，Mock 专用）=====
@@ -121,11 +166,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-// ===== 临时验证：启动时打印 admin 的 token 方便测试 =====
 func init() {
 	tok, _ := makeJWT(1001, "admin")
 	log.Println("Admin test token (valid 2h):")
 	log.Println("  " + tok)
-	log.Println("  Verify at https://jwt.io")
 	log.Println(strings.Repeat("-", 60))
 }

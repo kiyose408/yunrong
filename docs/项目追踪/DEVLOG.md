@@ -148,6 +148,22 @@
 
 **实现要点**：`onDisconnected` 中区分手动关闭 vs 意外断开，后者启动指数退避重连；`reconnectDelayMs()` = `min(1000×2^attempt, 60000)`；`onConnected` 清零计数器。
 
+---
+
+### T009 — Mock Server HTTP /health ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 0.5h |
+
+**产出**：`server/go.mod` `server/cmd/server/main.go`
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| — | 无 | — | — |
+
+**验证方式**：`go run ./cmd/server` → 另开终端 `curl http://localhost:8080/health` → `{"status":"ok"}`，Ctrl+C 正常退出。
+
 （后续 Phase 1 任务按实际进展逐项追加）
 
 ---

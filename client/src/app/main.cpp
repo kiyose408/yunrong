@@ -37,6 +37,9 @@ int main(int argc, char* argv[])
     QObject::connect(&wsClient, &WsClient::heartbeatTimeout, []() {
         qWarning() << "Connection lost (heartbeat timeout)";
     });
+    QObject::connect(&wsClient, &WsClient::maxReconnectReached, []() {
+        qWarning() << "Giving up after max reconnect attempts";
+    });
 
     wsClient.open(QUrl(wsUrl));
 

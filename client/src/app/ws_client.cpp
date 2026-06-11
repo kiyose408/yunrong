@@ -1,4 +1,4 @@
-// app/ws_client.cpp — QWebSocket 最小封装实现
+// app/ws_client.cpp — QWebSocket + 心跳实现
 
 #include "ws_client.h"
 #include <QJsonDocument>
@@ -13,6 +13,7 @@ WsClient::WsClient(QObject* parent)
             this, &WsClient::onError);
     connect(&m_socket, &QWebSocket::textMessageReceived,
             this, &WsClient::onTextMessage);
+    connect(&m_heartbeatTimer, &QTimer::timeout, this, &WsClient::onHeartbeatTick);
 }
 
 WsClient::~WsClient()
@@ -28,6 +29,7 @@ void WsClient::open(const QUrl& url)
 
 void WsClient::close()
 {
+    m_heartbeatTimer.stop();
     if (m_socket.state() != QAbstractSocket::UnconnectedState) {
         m_socket.close();
     }
@@ -41,14 +43,20 @@ void WsClient::sendJson(const QJsonObject& obj)
     m_socket.sendTextMessage(text);
 }
 
+// ---- slots ----
+
 void WsClient::onConnected()
 {
     qInfo() << "WebSocket connected";
+    m_timedOut = false;
+    resetActivity();
+    m_heartbeatTimer.start(kPingIntervalSec * 1000);
     emit connected();
 }
 
 void WsClient::onDisconnected()
 {
+    m_heartbeatTimer.stop();
     qInfo() << "WebSocket disconnected";
     emit disconnected();
 }
@@ -60,6 +68,8 @@ void WsClient::onError(QAbstractSocket::SocketError error)
 
 void WsClient::onTextMessage(const QString& text)
 {
+    resetActivity();   // 任何消息都算活动
+
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8(), &err);
     if (err.error != QJsonParseError::NoError) {
@@ -68,4 +78,31 @@ void WsClient::onTextMessage(const QString& text)
     }
     qInfo() << "WS recv:" << text;
     emit messageReceived(doc.object());
+}
+
+void WsClient::onHeartbeatTick()
+{
+    if (m_timedOut) return;
+
+    qint64 elapsed = m_lastActivity.elapsed() / 1000;
+    if (elapsed > kTimeoutSec) {
+        m_timedOut = true;
+        m_heartbeatTimer.stop();
+        qWarning() << "Heartbeat timeout: no message for" << elapsed
+                   << "seconds, connection lost";
+        m_socket.close();
+        emit heartbeatTimeout();
+        return;
+    }
+
+    QJsonObject ping;
+    ping["type"] = QStringLiteral("ping");
+    sendJson(ping);
+}
+
+// ---- private ----
+
+void WsClient::resetActivity()
+{
+    m_lastActivity.start();
 }

@@ -180,6 +180,22 @@
 
 **验证结果**：`admin/123456` → 200 + valid JWT；`admin/wrong` → 401。JWT 可用 jwt.io 解码验证。
 
+---
+
+### T011 — Mock Server WebSocket 回声 ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 1h |
+
+**产出**：`server/cmd/server/main.go`（增加 `wsHandler` + gorilla/websocket upgrader）
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| 1 | `go mod tidy` 无法下载 gorilla/websocket | Go 默认 proxy.golang.org 被墙 | `go env -w GOPROXY=https://goproxy.cn,direct` 切国内代理 |
+
+**验证结果**：浏览器 `new WebSocket("ws://localhost:8080/ws")` → ping→pong、任意 JSON→echo。客户端断开时服务端日志输出 `ws client disconnected`。
+
 （后续 Phase 1 任务按实际进展逐项追加）
 
 ---

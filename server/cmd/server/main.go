@@ -1,4 +1,4 @@
-// cmd/server/main.go — Mock Server，Phase 1
+// cmd/server/main.go — Mock Server，Phase 1 完成
 
 package main
 
@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,11 +25,56 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// ===== Hub =====
+
+type Hub struct {
+	mu      sync.RWMutex
+	clients map[int64]*Client // userID → client
+}
+
+func newHub() *Hub  { return &Hub{clients: make(map[int64]*Client)} }
+
+func (h *Hub) register(c *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if old, ok := h.clients[c.userID]; ok {
+		old.conn.Close() // 踢掉旧连接
+	}
+	h.clients[c.userID] = c
+	log.Printf("user %d registered (%d online)", c.userID, len(h.clients))
+}
+
+func (h *Hub) unregister(userID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.clients, userID)
+	log.Printf("user %d unregistered (%d online)", userID, len(h.clients))
+}
+
+func (h *Hub) sendToUser(userID int64, msg []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if c, ok := h.clients[userID]; ok {
+		c.conn.WriteMessage(websocket.TextMessage, msg)
+	}
+}
+
+type Client struct {
+	conn   *websocket.Conn
+	userID int64
+}
+
+// ===== main =====
+
 func main() {
+	hub := newHub()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("POST /api/v1/auth/login", loginHandler)
-	mux.HandleFunc("/ws", wsHandler)
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		wsHandler(w, r, hub)
+	})
 
 	addr := ":8080"
 	log.Printf("Mock Server listening on %s", addr)
@@ -97,51 +143,77 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func wsHandler(w http.ResponseWriter, r *http.Request) {
+func wsHandler(w http.ResponseWriter, r *http.Request, hub *Hub) {
+	// 从 query 参数提取 token → userID
+	token := r.URL.Query().Get("token")
+	userID := parseTokenUserID(token)
+	if userID == 0 {
+		http.Error(w, "invalid or missing token", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("ws upgrade failed: %v", err)
 		return
 	}
-	defer conn.Close()
 
-	log.Printf("ws client connected from %s", r.RemoteAddr)
+	client := &Client{conn: conn, userID: userID}
+	hub.register(client)
+	defer func() {
+		hub.unregister(client.userID)
+		conn.Close()
+	}()
+
+	log.Printf("ws connected: user %d from %s", userID, r.RemoteAddr)
 
 	for {
-		_, msg, err := conn.ReadMessage()
+		_, raw, err := conn.ReadMessage()
 		if err != nil {
-			log.Printf("ws client disconnected: %v", err)
+			log.Printf("ws disconnected: user %d (%v)", userID, err)
 			return
 		}
 
-		var req map[string]any
-		if err := json.Unmarshal(msg, &req); err != nil {
-			log.Printf("ws non-JSON received: %s", string(msg))
+		var msg map[string]any
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			log.Printf("ws non-JSON from user %d: %s", userID, string(raw))
 			continue
 		}
 
-		log.Printf("ws received: %s", string(msg))
+		log.Printf("ws recv user %d: %s", userID, string(raw))
 
-		// 回声：ping → pong，其他 → echo
-		reqType, _ := req["type"].(string)
-		var resp map[string]any
-		if reqType == "ping" {
-			resp = map[string]any{"type": "pong"}
-		} else {
-			resp = map[string]any{"type": "echo", "payload": req}
+		msgType, _ := msg["type"].(string)
+
+		switch msgType {
+		case "ping":
+			conn.WriteJSON(map[string]any{"type": "pong"})
+
+		case "msg":
+			// 单聊转发：{type:"msg", to: <userID>, body: "..."}
+			toUser := toFloat64(msg["to"])
+			body, _ := msg["body"].(string)
+			if toUser > 0 && body != "" {
+				forward := map[string]any{
+					"type": "msg",
+					"from": userID,
+					"body": body,
+				}
+				forwardBytes, _ := json.Marshal(forward)
+				hub.sendToUser(int64(toUser), forwardBytes)
+				log.Printf("msg routed: %d → %d", userID, int64(toUser))
+			}
+
+		default:
+			conn.WriteJSON(map[string]any{"type": "echo", "payload": msg})
 		}
-
-		respBytes, _ := json.Marshal(resp)
-		conn.WriteMessage(websocket.TextMessage, respBytes)
 	}
 }
 
-// ===== JWT（标准库手写，Mock 专用）=====
+// ===== JWT =====
 
 func makeJWT(userID int64, username string) (string, error) {
 	header := base64.RawURLEncoding.EncodeToString(
 		[]byte(`{"alg":"HS256","typ":"JWT"}`))
-
 	payloadBytes, _ := json.Marshal(map[string]any{
 		"user_id":  userID,
 		"username": username,
@@ -149,13 +221,43 @@ func makeJWT(userID int64, username string) (string, error) {
 		"iat":      time.Now().Unix(),
 	})
 	payload := base64.RawURLEncoding.EncodeToString(payloadBytes)
-
 	unsigned := header + "." + payload
 	mac := hmac.New(sha256.New, jwtSecret)
 	mac.Write([]byte(unsigned))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-
 	return unsigned + "." + sig, nil
+}
+
+// parseTokenUserID 从 JWT 中提取 user_id（Mock 简化：仅解码 payload，不验签）
+func parseTokenUserID(token string) int64 {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return 0
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return 0
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return 0
+	}
+	id, _ := claims["user_id"].(float64)
+	return int64(id)
+}
+
+// toFloat64 converts any JSON number to float64
+func toFloat64(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case json.Number:
+		f, _ := n.Float64()
+		return f
+	}
+	return 0
 }
 
 // ===== helpers =====
@@ -168,7 +270,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func init() {
 	tok, _ := makeJWT(1001, "admin")
-	log.Println("Admin test token (valid 2h):")
-	log.Println("  " + tok)
-	log.Println(strings.Repeat("-", 60))
+	tok2, _ := makeJWT(1002, "zhangsan")
+	log.Println(strings.Repeat("=", 60))
+	log.Println("Test tokens (valid 2h):")
+	log.Printf("  admin:    ?token=%s", tok)
+	log.Printf("  zhangsan: ?token=%s", tok2)
+	log.Println(strings.Repeat("=", 60))
 }

@@ -132,6 +132,22 @@
 
 **实现要点**：`onConnected` 启动 30s 定时器；`onTextMessage` 刷新活动时间；`onHeartbeatTick` 发送 ping + 检查 90s 超时。Mock Server 就位后完整验证。
 
+---
+
+### T008 — 断线自动重连 ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2025-07 | ✅ 完成 | 0.5h |
+
+**产出**：`client/src/app/ws_client.h` `client/src/app/ws_client.cpp`（增加 `m_reconnectTimer` / `onReconnectTick()` / `reconnectDelayMs()`）
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| — | 无 | — | — |
+
+**实现要点**：`onDisconnected` 中区分手动关闭 vs 意外断开，后者启动指数退避重连；`reconnectDelayMs()` = `min(1000×2^attempt, 60000)`；`onConnected` 清零计数器。
+
 （后续 Phase 1 任务按实际进展逐项追加）
 
 ---

@@ -3,8 +3,8 @@
 #include <QApplication>
 #include <QWidget>
 #include <QJsonObject>
-#include "logger.h"
-#include "config_mgr.h"
+#include "infra/logger.h"
+#include "infra/config_mgr.h"
 #include "ws_client.h"
 
 int main(int argc, char* argv[])

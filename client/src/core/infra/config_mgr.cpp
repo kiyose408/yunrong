@@ -1,6 +1,6 @@
-// app/config_mgr.cpp — JSON 配置文件加载实现
+// infra/config_mgr.cpp — JSON 配置文件加载实现
 
-#include "config_mgr.h"
+#include "infra/config_mgr.h"
 #include <QFile>
 #include <QDebug>
 

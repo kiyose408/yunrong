@@ -1,6 +1,6 @@
-// app/logger.cpp — Qt 全局消息处理器，输出到文件 + 控制台
+// infra/logger.cpp — Qt 全局消息处理器，输出到文件 + 控制台
 
-#include "logger.h"
+#include "infra/logger.h"
 #include <QDateTime>
 #include <iostream>
 

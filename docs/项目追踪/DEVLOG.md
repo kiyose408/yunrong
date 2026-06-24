@@ -245,6 +245,22 @@
 
 ---
 
+### T014 — HTTP 登录 Mock Server 拿到 token ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2026-06 | ✅ 完成 | 1h |
+
+**产出**：`client/src/core/net/http_client.h` `client/src/core/net/http_client.cpp`
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| 1 | `client/src/core/` 下文件被 gitignore | `core` 模式匹配了路径中 `core` 目录 | 改为 `/core` 仅匹配根目录 core dump |
+
+**验收**：客户端 POST 登录 → `Login response: 200` + `token: eyJ...`。
+
+---
+
 ## Phase 2：客户端核心层
 
 ---

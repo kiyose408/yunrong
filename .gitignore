@@ -60,8 +60,8 @@ server/vendor/
 coverage/
 
 # ===== Core dump =====
-core
-core.*
+/core
+/core.*
 
 # ===== 临时 / 备份 =====
 *.tmp

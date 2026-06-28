@@ -261,6 +261,22 @@
 
 ---
 
+### T015 — 拿 token 连 WebSocket ✅
+
+| 日期 | 状态 | 工时 |
+|------|:----:|------|
+| 2026-06 | ✅ 完成 | 0.5h |
+
+**产出**：`client/src/app/main.cpp`（登录回调中连 WS，带 `?token=` 参数）
+
+| # | 问题 | 原因 | 解决 |
+|---|---|---|---|
+| — | 无 | — | — |
+
+**验收**：WS 连接成功，不再 `Unsupported WWW-Authenticate`，Mock Server 日志显示 user 1001 registered。
+
+---
+
 ## Phase 2：客户端核心层
 
 ---

@@ -1,6 +1,7 @@
 # ===== IDE =====
 .vscode/
 .idea/
+.reasonix/
 *.swp
 *.swo
 *~

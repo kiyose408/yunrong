@@ -27,31 +27,8 @@ int main(int argc, char* argv[])
     QString baseUrl = QString("http://%1:%2").arg(cfg.serverHost()).arg(cfg.serverPort());
     LOG_INFO() << "Server:" << baseUrl << "(TLS:" << (cfg.serverTls() ? "on" : "off") << ")";
 
-    // HTTP 登录
-    HttpClient http;
-    http.setBaseUrl(baseUrl);
-
-    QObject::connect(&http, &HttpClient::responseReceived, [](int status, const QJsonObject& data) {
-        qInfo() << "Login response:" << status;
-        if (data.contains("data")) {
-            QJsonObject d = data["data"].toObject();
-            qInfo() << "  user_id:" << d["user_id"].toInt();
-            qInfo() << "  token:" << d["access_token"].toString();
-        }
-    });
-    QObject::connect(&http, &HttpClient::requestFailed, [](const QString& error) {
-        qWarning() << "Login failed:" << error;
-    });
-
-    QJsonObject loginBody;
-    loginBody["username"] = QStringLiteral("admin");
-    loginBody["password"] = QStringLiteral("123456");
-    http.postJson("/api/v1/auth/login", loginBody);
-
-    // WebSocket 连接
-    QString wsUrl = QString("ws://%1:%2/ws").arg(cfg.serverHost()).arg(cfg.serverPort());
+    // WebSocket 客户端（登录拿到 token 后再连接）
     WsClient wsClient;
-
     QObject::connect(&wsClient, &WsClient::messageReceived, [](const QJsonObject& msg) {
         qInfo() << "Message received - type:" << msg.value("type").toString();
     });
@@ -62,7 +39,31 @@ int main(int argc, char* argv[])
         qWarning() << "Giving up after max reconnect attempts";
     });
 
-    wsClient.open(QUrl(wsUrl));
+    // HTTP 登录 → 拿到 token → 连 WS
+    HttpClient http;
+    http.setBaseUrl(baseUrl);
+
+    QObject::connect(&http, &HttpClient::responseReceived,
+                     [&wsClient, &cfg](int status, const QJsonObject& data) {
+        qInfo() << "Login response:" << status;
+        if (!data.contains("data")) return;
+        QJsonObject d = data["data"].toObject();
+        QString token = d["access_token"].toString();
+        qInfo() << "  token:" << token;
+
+        QString wsUrl = QString("ws://%1:%2/ws?token=%3")
+                            .arg(cfg.serverHost()).arg(cfg.serverPort()).arg(token);
+        wsClient.open(QUrl(wsUrl));
+    });
+
+    QObject::connect(&http, &HttpClient::requestFailed, [](const QString& error) {
+        qWarning() << "Login failed:" << error;
+    });
+
+    QJsonObject loginBody;
+    loginBody["username"] = QStringLiteral("admin");
+    loginBody["password"] = QStringLiteral("123456");
+    http.postJson("/api/v1/auth/login", loginBody);
 
     QWidget window;
     window.setWindowTitle("YunRong");

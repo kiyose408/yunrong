@@ -3,9 +3,11 @@
 #include <QApplication>
 #include <QWidget>
 #include <QJsonObject>
+#include <QJsonDocument>
 #include "infra/logger.h"
 #include "infra/config_mgr.h"
 #include "net/http_client.h"
+#include "net/protocol.h"
 #include "ws_client.h"
 
 int main(int argc, char* argv[])
@@ -28,9 +30,27 @@ int main(int argc, char* argv[])
     LOG_INFO() << "Server:" << baseUrl << "(TLS:" << (cfg.serverTls() ? "on" : "off") << ")";
 
     // WebSocket 客户端（登录拿到 token 后再连接）
+    Protocol proto;
     WsClient wsClient;
-    QObject::connect(&wsClient, &WsClient::messageReceived, [](const QJsonObject& msg) {
-        qInfo() << "Message received - type:" << msg.value("type").toString();
+
+    QObject::connect(&wsClient, &WsClient::connected, [&wsClient, &proto]() {
+        qInfo() << "WS connected, sending ping via Protocol";
+        QString pingFrame = proto.encodePing();
+        qInfo() << "Encoded frame:" << pingFrame;
+
+        // 直接用 wsClient 发原始 JSON（Protocol 已将 ping 封装为帧）
+        QJsonDocument doc(QJsonDocument::fromJson(pingFrame.toUtf8()));
+        wsClient.sendJson(doc.object());
+    });
+    QObject::connect(&wsClient, &WsClient::messageReceived, [&proto](const QJsonObject& msg) {
+        // 将收到的 JSON 对象重新序列化为字符串，用 Protocol 解码
+        QJsonDocument doc(msg);
+        QString raw = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+        Protocol::Frame f = proto.decode(raw);
+        if (f.valid)
+            qInfo() << "Decoded - type:" << f.type << "seq:" << f.seq;
+        else
+            qWarning() << "Decode failed:" << f.error;
     });
     QObject::connect(&wsClient, &WsClient::heartbeatTimeout, []() {
         qWarning() << "Connection lost (heartbeat timeout)";

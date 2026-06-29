@@ -15,6 +15,7 @@ target_sources(yunrong_core PRIVATE
     infra/logger.cpp
     infra/config_mgr.cpp
     net/http_client.cpp
+    net/protocol.cpp
 )
 
 include(../../cmake/Platform.cmake)
